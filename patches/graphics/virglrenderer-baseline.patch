@@ -1,0 +1,809 @@
+diff --git a/src/meson.build b/src/meson.build
+index 0882d803f1d748e8e2804579c71865611ca50c5c..c8acb8eb2bd5a928c2680e20f1ad55b2ea2431e0 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -108,6 +108,7 @@
+ )
+ 
+ neptune_sources = [
++   'neptune/npt_bc6_upload_check.c',
+    'neptune/npt_common.c',
+    'neptune/npt_context.c',
+    'neptune/npt_cs.c',
+diff --git a/src/neptune/npt_bc6_upload_check.c b/src/neptune/npt_bc6_upload_check.c
+new file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..2cd4befa4243a6835cfa2cec440b8a608acadda9
+--- /dev/null
++++ b/src/neptune/npt_bc6_upload_check.c
+@@ -0,0 +1,372 @@
++/*
++ * Copyright 2026 Turing Software LLC
++ * SPDX-License-Identifier: MIT
++ */
++#include "npt_bc6_upload_check.h"
++
++#include <stdio.h>
++#include <time.h>
++#include <unistd.h>
++
++#include "npt_com.h"
++#include "npt_context.h"
++
++static bool
++npt_bc6_now(uint64_t *ns)
++{
++   struct timespec ts;
++   if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
++      return false;
++   *ns = (uint64_t)ts.tv_sec * UINT64_C(1000000000) + ts.tv_nsec;
++   return true;
++}
++
++static uint64_t
++npt_bc6_elapsed_ms(const struct npt_bc6_upload_check_state *s, uint64_t now)
++{
++   return s->started && now >= s->first_upload_ns
++             ? (now - s->first_upload_ns) / UINT64_C(1000000) : 0;
++}
++
++static bool
++npt_bc6_parse_name(const char *name, size_t len,
++                    struct npt_bc6_upload_check_state *s)
++{
++   static const char prefix[] = "nptw pid=";
++   if (!name || strlen(name) != len || strncmp(name, prefix, sizeof(prefix) - 1))
++      return false;
++   const char *p = name + sizeof(prefix) - 1;
++   uint32_t value = 0;
++   if (*p < '0' || *p > '9')
++      return false;
++   do {
++      unsigned digit = (unsigned)(*p++ - '0');
++      if (value > (UINT32_MAX - digit) / 10)
++         return false;
++      value = value * 10 + digit;
++   } while (*p >= '0' && *p <= '9');
++   if (!value || strncmp(p, " exe=", 5))
++      return false;
++   static const char *const clients[] = {"GenshinImpact.exe", "AstraBC6.exe"};
++   for (unsigned i = 0; i < ARRAY_SIZE(clients); i++) {
++      char expected[96];
++      int expected_len = snprintf(expected, sizeof(expected),
++                                  "nptw pid=%u exe=%s", value, clients[i]);
++      bool full = expected_len > 0 && (size_t)expected_len == len &&
++                  !strcmp(name, expected);
++      /* The live transport has supplied exactly 31 characters even though
++       * the source context tag buffer is larger. Accept only this explicit
++       * truncation of an exact generated tag, retaining >=8 basename bytes.
++       * A truncated tag alone is not full process identity; the collector
++       * must independently join the full Present client name and guest PID. */
++      bool truncated = expected_len > 31 && len == 31 &&
++                       (size_t)(p + 5 - name) <= 31 - 8 &&
++                       !strncmp(name, expected, 31);
++      if (full || truncated) {
++         s->guest_pid = value;
++         s->client = clients[i];
++         s->tag_truncated = truncated;
++         return true;
++      }
++   }
++   return false;
++}
++
++/* Called with the mutex held, or during initialization before publication. */
++static void
++npt_bc6_summary(struct npt_context *ctx, const char *reason, uint64_t now)
++{
++   struct npt_bc6_upload_check_state *s = &ctx->bc6_upload_check;
++   if (s->summary_emitted)
++      return;
++   s->summary_emitted = s->stopped = true;
++   npt_log("BC6UploadSummary {\"schema\":\"astra-bc6-upload-summary-1\","
++           "\"event\":\"BC6UploadSummary\",\"guest_pid\":%u,\"hostpid\":%ld,"
++           "\"client\":\"%s\",\"tag_truncated\":%s,"
++           "\"transport_ctx\":%u,\"reason\":\"%s\",\"resources\":%u,"
++           "\"updates\":%u,\"readbacks\":%u,\"comparisons\":%u,"
++           "\"matches\":%u,\"mismatches\":%u,\"skipped\":%u,\"failed\":%u,"
++           "\"tight_bytes_budgeted\":%" PRIu64 ",\"compared_bytes\":%" PRIu64 ","
++           "\"elapsed_ms\":%" PRIu64 "}",
++           s->guest_pid, (long)getpid(), s->client,
++           s->tag_truncated ? "true" : "false", ctx->ctx_id, reason, s->resources,
++           s->updates, s->readbacks, s->comparisons, s->matches, s->mismatches,
++           s->skipped, s->failed, s->tight_bytes_budgeted, s->compared_bytes,
++           npt_bc6_elapsed_ms(s, now));
++}
++
++void
++npt_bc6_upload_check_init(struct npt_context *ctx, size_t debug_len)
++{
++   struct npt_bc6_upload_check_state *s = &ctx->bc6_upload_check;
++   const char *env = getenv("ASTRA_BC6_UPLOAD_CHECK");
++   if (!env || strcmp(env, "1") ||
++       !npt_bc6_parse_name(ctx->debug_name, debug_len, s))
++      return;
++   if (mtx_init(&s->mutex, mtx_plain) != thrd_success) {
++      npt_bc6_summary(ctx, "mutex_init_failed", 0);
++      return;
++   }
++   s->enabled = true;
++}
++
++void
++npt_bc6_upload_check_fini(struct npt_context *ctx)
++{
++   struct npt_bc6_upload_check_state *s = &ctx->bc6_upload_check;
++   if (!s->enabled)
++      return;
++   mtx_lock(&s->mutex);
++   uint64_t now = 0;
++   bool clock_ok = npt_bc6_now(&now);
++   npt_bc6_summary(ctx, clock_ok ? "teardown" : "clock_failed", now);
++   mtx_unlock(&s->mutex);
++   mtx_destroy(&s->mutex);
++}
++
++static uint64_t
++npt_bc6_hash_rows(const uint8_t *data, uint32_t pitch, uint32_t rows,
++                   uint32_t tight_row, uint32_t *reserved)
++{
++   uint64_t hash = UINT64_C(14695981039346656037);
++   *reserved = 0;
++   for (uint32_t y = 0; y < rows; y++) {
++      const uint8_t *row = data + (size_t)y * pitch;
++      for (uint32_t x = 0; x < tight_row; x++) {
++         hash ^= row[x];
++         hash *= UINT64_C(1099511628211);
++      }
++      for (uint32_t x = 0; x < tight_row; x += 16) {
++         unsigned mode = row[x] & 31;
++         if ((row[x] & 3) == 3 &&
++             (mode == 19 || mode == 23 || mode == 27 || mode == 31))
++            (*reserved)++;
++      }
++   }
++   return hash;
++}
++
++void
++npt_bc6_upload_check(struct npt_context *ctx, void *resource,
++                      ID3D11Device *device, ID3D11DeviceContext *imm_ctx,
++                      uint64_t resource_id, uint32_t subresource,
++                      uint32_t row_pitch, uint32_t byte_size,
++                      bool has_box, const void *payload)
++{
++   struct npt_bc6_upload_check_state *s = &ctx->bc6_upload_check;
++   if (!s->enabled)
++      return;
++   mtx_lock(&s->mutex);
++   if (s->stopped)
++      goto unlock;
++
++   D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
++   PFN_ID3D11Resource_GetType get_type = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11Resource_GetType, npt_com_vtable(resource),
++      NPT_VTBL_ID3D11Resource_GetType);
++   get_type(resource, &dimension);
++   if (dimension != D3D11_RESOURCE_DIMENSION_TEXTURE2D)
++      goto unlock;
++   D3D11_TEXTURE2D_DESC desc;
++   PFN_ID3D11Texture2D_GetDesc get_desc = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11Texture2D_GetDesc, npt_com_vtable(resource),
++      NPT_VTBL_ID3D11Texture2D_GetDesc);
++   get_desc(resource, &desc);
++   if (desc.Format != DXGI_FORMAT_BC6H_UF16 || desc.Width != 128 ||
++       desc.Height != 128 || desc.MipLevels != 8 || desc.ArraySize != 6 ||
++       desc.SampleDesc.Count != 1 || desc.Usage != D3D11_USAGE_DEFAULT)
++      goto unlock;
++
++   uint64_t now = 0;
++   if (!npt_bc6_now(&now)) {
++      npt_bc6_summary(ctx, "clock_failed", 0);
++      goto unlock;
++   }
++   if (s->started && now - s->first_upload_ns >= NPT_BC6_UPLOAD_MAX_NS) {
++      npt_bc6_summary(ctx, "deadline", now);
++      goto unlock;
++   }
++   if (s->updates >= NPT_BC6_UPLOAD_MAX_UPDATES) {
++      npt_bc6_summary(ctx, "update_cap", now);
++      goto unlock;
++   }
++   uint32_t id_index = 0;
++   while (id_index < s->resources && s->resource_ids[id_index] != resource_id)
++      id_index++;
++   if (id_index == s->resources) {
++      if (s->resources == NPT_BC6_UPLOAD_MAX_RESOURCES) {
++         npt_bc6_summary(ctx, "resource_cap", now);
++         goto unlock;
++      }
++      s->resource_ids[s->resources++] = resource_id;
++   }
++
++   uint32_t mip = subresource % 8;
++   uint32_t side = 128u >> mip;
++   uint32_t rows = (side + 3) / 4;
++   uint32_t tight_row = rows * 16;
++   uint32_t tightbytes = rows * tight_row;
++   const char *status = "skipped";
++   const char *step = "has_box";
++   const char *stop_reason = NULL;
++   char hr_json[32] = "null";
++   char expected_hash_json[32] = "null", actual_hash_json[32] = "null";
++   char expected_reserved_json[32] = "null", actual_reserved_json[32] = "null";
++   char mismatch_json[32] = "null", first_json[160] = "";
++   ID3D11Texture2D *staging = NULL;
++   uint32_t mismatch_count = 0;
++   s->updates++;
++
++   if (has_box)
++      goto report;
++   if (subresource >= 48) {
++      step = "invalid_subresource";
++      goto report;
++   }
++   if (!s->started) {
++      s->started = true;
++      s->first_upload_ns = now;
++   }
++   if (!payload || row_pitch < tight_row ||
++       (uint64_t)(rows - 1) * row_pitch + tight_row > byte_size) {
++      step = "invalid_payload_extent";
++      goto report;
++   }
++   if (s->tight_bytes_budgeted + tightbytes > NPT_BC6_UPLOAD_MAX_BYTES) {
++      step = "byte_cap";
++      stop_reason = "byte_cap";
++      goto report;
++   }
++   /* Reserve the whole tight extent before touching payload, even if a
++    * subsequent D3D operation fails. No padded or allocation-wide dumps. */
++   s->tight_bytes_budgeted += tightbytes;
++   uint32_t expected_reserved;
++   uint64_t expected_hash = npt_bc6_hash_rows(payload, row_pitch, rows,
++                                              tight_row, &expected_reserved);
++   snprintf(expected_hash_json, sizeof(expected_hash_json),
++            "\"%016" PRIx64 "\"", expected_hash);
++   snprintf(expected_reserved_json, sizeof(expected_reserved_json),
++            "%u", expected_reserved);
++
++   desc.ArraySize = 1;
++   desc.Usage = D3D11_USAGE_STAGING;
++   desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
++   desc.BindFlags = desc.MiscFlags = 0;
++   PFN_ID3D11Device_CreateTexture2D create = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11Device_CreateTexture2D, npt_com_vtable(device),
++      NPT_VTBL_ID3D11Device_CreateTexture2D);
++   HRESULT hr = create(device, &desc, NULL, &staging);
++   snprintf(hr_json, sizeof(hr_json), "%" PRId32, (int32_t)hr);
++   if (NPT_FAILED(hr) || !staging) {
++      status = "failed";
++      step = NPT_FAILED(hr) ? "create_staging" : "create_staging_null";
++      goto report;
++   }
++   /* Creation may itself consume the remaining time. Do not issue a new
++    * copy after the deadline; an already-issued synchronous Map may finish
++    * later and is reported honestly rather than cancelled mid-operation. */
++   strcpy(hr_json, "null");
++   if (!npt_bc6_now(&now)) {
++      status = "failed";
++      step = stop_reason = "clock_failed";
++      goto report;
++   }
++   if (now - s->first_upload_ns >= NPT_BC6_UPLOAD_MAX_NS) {
++      step = "deadline_before_copy";
++      stop_reason = "deadline";
++      goto report;
++   }
++   PFN_ID3D11DeviceContext_CopySubresourceRegion copy = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11DeviceContext_CopySubresourceRegion, npt_com_vtable(imm_ctx),
++      NPT_VTBL_ID3D11DeviceContext_CopySubresourceRegion);
++   s->readbacks++;
++   copy(imm_ctx, (ID3D11Resource *)staging, mip, 0, 0, 0,
++        resource, subresource, NULL);
++   PFN_ID3D11DeviceContext_Map map = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11DeviceContext_Map, npt_com_vtable(imm_ctx),
++      NPT_VTBL_ID3D11DeviceContext_Map);
++   PFN_ID3D11DeviceContext_Unmap unmap = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11DeviceContext_Unmap, npt_com_vtable(imm_ctx),
++      NPT_VTBL_ID3D11DeviceContext_Unmap);
++   D3D11_MAPPED_SUBRESOURCE mapped = {0};
++   hr = map(imm_ctx, (ID3D11Resource *)staging, mip, D3D11_MAP_READ, 0, &mapped);
++   snprintf(hr_json, sizeof(hr_json), "%" PRId32, (int32_t)hr);
++   if (NPT_FAILED(hr)) {
++      status = "failed";
++      step = "map_read";
++      goto report;
++   }
++   if (!mapped.pData || mapped.RowPitch < tight_row ||
++       (uint64_t)(rows - 1) * mapped.RowPitch + tight_row > SIZE_MAX) {
++      status = "failed";
++      step = "mapped_extent";
++   } else {
++      uint32_t actual_reserved;
++      uint64_t actual_hash = npt_bc6_hash_rows(mapped.pData, mapped.RowPitch,
++                                                rows, tight_row, &actual_reserved);
++      snprintf(actual_hash_json, sizeof(actual_hash_json),
++               "\"%016" PRIx64 "\"", actual_hash);
++      snprintf(actual_reserved_json, sizeof(actual_reserved_json),
++               "%u", actual_reserved);
++      for (uint32_t y = 0; y < rows; y++) {
++         const uint8_t *expected = (const uint8_t *)payload + (size_t)y * row_pitch;
++         const uint8_t *actual = (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch;
++         for (uint32_t x = 0; x < tight_row; x++) {
++            if (expected[x] == actual[x])
++               continue;
++            if (!mismatch_count)
++               snprintf(first_json, sizeof(first_json),
++                        ",\"first_mismatch_offset\":%u,\"first_expected_byte\":%u,"
++                        "\"first_actual_byte\":%u", y * tight_row + x,
++                        (unsigned)expected[x], (unsigned)actual[x]);
++            mismatch_count++;
++         }
++      }
++      snprintf(mismatch_json, sizeof(mismatch_json), "%u", mismatch_count);
++      s->comparisons++;
++      s->compared_bytes += tightbytes;
++      status = mismatch_count ? "mismatch" : "match";
++      step = "compare";
++   }
++   unmap(imm_ctx, (ID3D11Resource *)staging, mip);
++
++report:
++   if (staging)
++      npt_com_release(staging);
++   if (!strcmp(status, "match"))
++      s->matches++;
++   else if (!strcmp(status, "mismatch"))
++      s->mismatches++;
++   else if (!strcmp(status, "failed"))
++      s->failed++;
++   else
++      s->skipped++;
++   if (!npt_bc6_now(&now))
++      stop_reason = "clock_failed";
++   npt_log("BC6UploadCheck {\"schema\":\"astra-bc6-upload-check-1\","
++           "\"event\":\"BC6UploadCheck\",\"guest_pid\":%u,\"hostpid\":%ld,"
++           "\"client\":\"%s\",\"tag_truncated\":%s,"
++           "\"transport_ctx\":%u,\"resource_id\":\"%016" PRIx64 "\","
++           "\"update_index\":%u,\"subresource\":%u,\"mip\":%u,\"side\":%u,"
++           "\"array_slice\":%u,\"tightbytes\":%u,\"row_pitch\":%u,\"byte_size\":%u,"
++           "\"status\":\"%s\",\"step\":\"%s\",\"hresult\":%s,"
++           "\"mismatched_bytes\":%s,\"expected_fnv1a64\":%s,\"actual_fnv1a64\":%s,"
++           "\"expected_reserved_blocks\":%s,\"actual_reserved_blocks\":%s,"
++           "\"elapsed_ms\":%" PRIu64 "%s}",
++           s->guest_pid, (long)getpid(), s->client,
++           s->tag_truncated ? "true" : "false", ctx->ctx_id, resource_id, s->updates,
++           subresource, mip, side, subresource / 8, tightbytes, row_pitch, byte_size,
++           status, step, hr_json, mismatch_json, expected_hash_json, actual_hash_json,
++           expected_reserved_json, actual_reserved_json,
++           npt_bc6_elapsed_ms(s, now), first_json);
++   if (!stop_reason && s->updates == NPT_BC6_UPLOAD_MAX_UPDATES)
++      stop_reason = "update_cap";
++   if (!stop_reason && s->tight_bytes_budgeted == NPT_BC6_UPLOAD_MAX_BYTES)
++      stop_reason = "byte_cap";
++   if (!stop_reason && s->started && now - s->first_upload_ns >= NPT_BC6_UPLOAD_MAX_NS)
++      stop_reason = "deadline";
++   if (stop_reason)
++      npt_bc6_summary(ctx, stop_reason, now);
++unlock:
++   mtx_unlock(&s->mutex);
++}
+diff --git a/src/neptune/npt_bc6_upload_check.h b/src/neptune/npt_bc6_upload_check.h
+new file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..36c1044cd6e310e0b7f086544f54533e14edbe41
+--- /dev/null
++++ b/src/neptune/npt_bc6_upload_check.h
+@@ -0,0 +1,55 @@
++/*
++ * Copyright 2026 Turing Software LLC
++ * SPDX-License-Identifier: MIT
++ *
++ * Bounded diagnostic for the BC6 source-cube upload, disabled by default.
++ */
++#ifndef NPT_BC6_UPLOAD_CHECK_H
++#define NPT_BC6_UPLOAD_CHECK_H
++
++#include "npt_common.h"
++#include "neptune-protocol/npt_protocol_host_dispatch_types.h"
++
++#define NPT_BC6_UPLOAD_MAX_RESOURCES 128u
++#define NPT_BC6_UPLOAD_MAX_UPDATES 6144u
++#define NPT_BC6_UPLOAD_MAX_BYTES (32u * 1024u * 1024u)
++#define NPT_BC6_UPLOAD_MAX_NS UINT64_C(120000000000)
++
++struct npt_bc6_upload_check_state {
++   /* enabled is immutable after context initialization. All remaining
++    * state and diagnostic D3D calls are protected by mutex. Normal D3D
++    * calls, including the preceding upload, do not take this mutex. */
++   bool enabled;
++   mtx_t mutex;
++   uint32_t guest_pid;
++   const char *client;
++   bool tag_truncated;
++   bool started;
++   bool stopped;
++   bool summary_emitted;
++   uint64_t first_upload_ns;
++   uint64_t resource_ids[NPT_BC6_UPLOAD_MAX_RESOURCES];
++   uint32_t resources;
++   uint32_t updates;
++   uint32_t readbacks;
++   uint32_t comparisons;
++   uint32_t matches;
++   uint32_t mismatches;
++   uint32_t skipped;
++   uint32_t failed;
++   uint64_t tight_bytes_budgeted;
++   uint64_t compared_bytes;
++};
++
++void npt_bc6_upload_check_init(struct npt_context *ctx, size_t debug_len);
++void npt_bc6_upload_check_fini(struct npt_context *ctx);
++
++/* Called immediately after ordinary UpdateSubresource, before the borrowed
++ * payload or recovered device/context references are released. */
++void npt_bc6_upload_check(struct npt_context *ctx, void *resource,
++                          ID3D11Device *device, ID3D11DeviceContext *imm_ctx,
++                          uint64_t resource_id, uint32_t subresource,
++                          uint32_t row_pitch, uint32_t byte_size,
++                          bool has_box, const void *payload);
++
++#endif
+diff --git a/src/neptune/npt_context.c b/src/neptune/npt_context.c
+index 90dbb6e904138b7bbb9addd485eaf45537ae311c..d373e1285f6e853b5b30e22d0bdcd50baf39d574 100644
+--- a/src/neptune/npt_context.c
++++ b/src/neptune/npt_context.c
+@@ -519,6 +519,8 @@
+    npt_context_init_dispatch(ctx);
+ 
+    list_inithead(&ctx->head);
++
++   npt_bc6_upload_check_init(ctx, debug_len);
+ 
+    npt_log("created Neptune context %u (%.*s)", ctx_id, (int)debug_len,
+            debug_name ? debug_name : "");
+@@ -575,6 +577,9 @@
+       npt_ring_destroy(ring);
+    }
+ 
++   /* All ring callers have stopped before the diagnostic mutex is freed. */
++   npt_bc6_upload_check_fini(ctx);
++
+    for (uint32_t i = 0; i < ARRAY_SIZE(ctx->sync_queues); i++) {
+       if (ctx->sync_queues[i]) {
+          npt_queue_destroy(ctx->sync_queues[i]);
+diff --git a/src/neptune/npt_context.h b/src/neptune/npt_context.h
+index 0e36cfb91613ce703df4d19d7a492201ffca1abd..0df5f4a00d4daaf1a6a8c053e58e05cb4e832e4e 100644
+--- a/src/neptune/npt_context.h
++++ b/src/neptune/npt_context.h
+@@ -9,6 +9,7 @@
+ #define NPT_CONTEXT_H
+ 
+ #include "npt_common.h"
++#include "npt_bc6_upload_check.h"
+ #include "npt_cs.h"
+ #include "npt_event.h"
+ #include "npt_feedback.h"
+@@ -78,6 +79,8 @@
+     * name).  May be NULL. */
+    char *debug_name;
+ 
++   struct npt_bc6_upload_check_state bc6_upload_check;
++
+    /* True when this context runs on a virgl_render_server worker
+     * thread; false in the default worker-process mode. */
+    bool on_worker_thread;
+diff --git a/src/neptune/npt_lighting_shader_export.c b/src/neptune/npt_lighting_shader_export.c
+new file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..7f260e2c799af86cce9cab2b57d2676fa1068aab
+--- /dev/null
++++ b/src/neptune/npt_lighting_shader_export.c
+@@ -0,0 +1,137 @@
++/*
++ * Copyright 2026 Turing Software LLC
++ * SPDX-License-Identifier: MIT
++ */
++#include "npt_lighting_shader_export.h"
++
++#include "npt_context.h"
++
++#ifdef __APPLE__
++#include <CommonCrypto/CommonDigest.h>
++#include <stdio.h>
++#include <unistd.h>
++
++static const char *const npt_lighting_shader_sha1[] = {
++   "7a998b567e2ef83807a0ab0bb9b327799faad364",
++   "64551beb1560905ae7da9cd563a5ba07f546d293",
++};
++
++/* One bounded emission per selected stage per worker process. The atomic
++ * exchange also handles simultaneous CreateShader ring callers. The
++ * collector independently verifies completeness and the reconstructed SHA1. */
++static atomic_bool npt_lighting_shader_attempted[2] = {false, false};
++
++static uint32_t
++npt_lighting_shader_guest_pid(const char *tag)
++{
++   static const char prefix[] = "nptw pid=";
++   if (!tag || strncmp(tag, prefix, sizeof(prefix) - 1))
++      return 0;
++   const char *p = tag + sizeof(prefix) - 1;
++   if (*p < '0' || *p > '9')
++      return 0;
++   uint32_t pid = 0;
++   do {
++      unsigned digit = (unsigned)(*p++ - '0');
++      if (pid > (UINT32_MAX - digit) / 10)
++         return 0;
++      pid = pid * 10 + digit;
++   } while (*p >= '0' && *p <= '9');
++   return !strncmp(p, " exe=", 5) && p[5] ? pid : 0;
++}
++
++static void
++npt_lighting_shader_log(struct npt_context *ctx, unsigned stage,
++                         const char *sha1, size_t byte_count,
++                         const char *result)
++{
++   /* Keep caller-supplied tags bounded and JSON-safe. They are diagnostic
++    * labels, not independently authenticated process identities. */
++   const char *source = ctx->debug_name ? ctx->debug_name : "";
++   char tag[96];
++   size_t i = 0;
++   for (; i + 1 < sizeof(tag) && source[i]; i++) {
++      unsigned char c = (unsigned char)source[i];
++      tag[i] = c >= 32 && c <= 126 && c != '"' && c != '\\' ? c : '_';
++   }
++   tag[i] = '\0';
++   char pid_json[16] = "null";
++   uint32_t pid = npt_lighting_shader_guest_pid(source);
++   if (pid)
++      snprintf(pid_json, sizeof(pid_json), "%u", pid);
++   npt_log("LightingShaderExport {\"schema\":\"astra-lighting-shader-export-1\","
++           "\"stage\":\"%s\",\"sha1\":\"%s\",\"bytecount\":%zu,"
++           "\"hostpid\":%ld,\"transport_ctx\":%u,\"guest_pid\":%s,"
++           "\"tag\":\"%s\",\"tag_log_truncated\":%s,"
++           "\"result\":\"%s\"}",
++           stage == NPT_LIGHTING_SHADER_VS ? "vs" : "ps", sha1, byte_count,
++           (long)getpid(), ctx->ctx_id, pid_json, tag,
++           source[i] ? "true" : "false", result);
++}
++#endif
++
++void
++npt_lighting_shader_export(struct npt_context *ctx,
++                            enum npt_lighting_shader_stage stage,
++                            const void *bytecode, size_t byte_count)
++{
++#ifdef __APPLE__
++   const char *enabled = getenv("ASTRA_LIGHTING_SHADER_EXPORT");
++   if (!enabled || strcmp(enabled, "1") || !ctx ||
++       (stage != NPT_LIGHTING_SHADER_VS && stage != NPT_LIGHTING_SHADER_PS) ||
++       !bytecode || byte_count < 32 || byte_count > 65536u)
++      return;
++   if (atomic_load_explicit(&npt_lighting_shader_attempted[stage], memory_order_relaxed))
++      return;
++   if (memcmp(bytecode, "DXBC", 4))
++      return;
++
++   unsigned char digest[CC_SHA1_DIGEST_LENGTH];
++   /* SHA1 is the externally supplied shader identifier, not a security or
++    * trust primitive. Hash the complete payload, not the DXBC header hash. */
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wdeprecated-declarations"
++   unsigned char *hash_result = CC_SHA1(bytecode, (CC_LONG)byte_count, digest);
++#pragma clang diagnostic pop
++   if (!hash_result)
++      return;
++   static const char hex[] = "0123456789abcdef";
++   char sha1[CC_SHA1_DIGEST_LENGTH * 2 + 1];
++   for (unsigned i = 0; i < CC_SHA1_DIGEST_LENGTH; i++) {
++      sha1[i * 2] = hex[digest[i] >> 4];
++      sha1[i * 2 + 1] = hex[digest[i] & 15];
++   }
++   sha1[sizeof(sha1) - 1] = '\0';
++   if (strcmp(sha1, npt_lighting_shader_sha1[stage]))
++      return;
++   if (atomic_exchange_explicit(&npt_lighting_shader_attempted[stage], true,
++                                memory_order_relaxed))
++      return;
++
++   /* Match the existing private runtime-log collector's bounded format.
++    * Each line is independently identified by full SHA1 and byte offset,
++    * so VS/PS records may interleave without confusing reconstruction. */
++   npt_log("ASTRA_SHADER_DIAG_BEGIN sha1=%s bytes=%zu", sha1, byte_count);
++   for (size_t offset = 0; offset < byte_count; offset += 192) {
++      size_t count = byte_count - offset;
++      if (count > 192)
++         count = 192;
++      char chunk_hex[192 * 2 + 1];
++      const uint8_t *chunk = (const uint8_t *)bytecode + offset;
++      for (size_t i = 0; i < count; i++) {
++         chunk_hex[i * 2] = hex[chunk[i] >> 4];
++         chunk_hex[i * 2 + 1] = hex[chunk[i] & 15];
++      }
++      chunk_hex[count * 2] = '\0';
++      npt_log("ASTRA_SHADER_DIAG_DATA sha1=%s offset=%zu hex=%s", sha1, offset, chunk_hex);
++   }
++   npt_log("ASTRA_SHADER_DIAG_END sha1=%s", sha1);
++   npt_lighting_shader_log(ctx, stage, sha1, byte_count, "logged_to_runtime");
++#else
++   /* This local opt-in uses the macOS system SHA1 implementation only. */
++   (void)ctx;
++   (void)stage;
++   (void)bytecode;
++   (void)byte_count;
++#endif
++}
+diff --git a/src/neptune/npt_lighting_shader_export.h b/src/neptune/npt_lighting_shader_export.h
+new file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..24da1b740bc5ef1a44f5679048f1abbc95a67be3
+--- /dev/null
++++ b/src/neptune/npt_lighting_shader_export.h
+@@ -0,0 +1,24 @@
++/*
++ * Copyright 2026 Turing Software LLC
++ * SPDX-License-Identifier: MIT
++ */
++#ifndef NPT_LIGHTING_SHADER_EXPORT_H
++#define NPT_LIGHTING_SHADER_EXPORT_H
++
++#include <stddef.h>
++
++struct npt_context;
++
++enum npt_lighting_shader_stage {
++   NPT_LIGHTING_SHADER_VS,
++   NPT_LIGHTING_SHADER_PS,
++};
++
++/* Emit only the two explicitly selected original DXBC programs through the
++ * private runtime logger, at most 65536 bytes each and once per process.
++ * The bytecode remains borrowed from the normal CreateShader driver call. */
++void npt_lighting_shader_export(struct npt_context *ctx,
++                                 enum npt_lighting_shader_stage stage,
++                                 const void *bytecode, size_t byte_count);
++
++#endif
+diff --git a/src/neptune/npt_resource.c b/src/neptune/npt_resource.c
+index 279bc4dec757515ec47c9a7896d9f4f52c78feb5..19b09af963416dd79aa187661202fc7210bc30a1 100644
+--- a/src/neptune/npt_resource.c
++++ b/src/neptune/npt_resource.c
+@@ -13,6 +13,7 @@
+ 
+ #include <stdlib.h>
+ #include <string.h>
++#include <stdatomic.h>
+ 
+ #include "npt_com.h"
+ #include "npt_context.h"
+@@ -20,12 +21,103 @@
+ 
+ #include "neptune-protocol/npt_protocol_host_dispatch_types.h"
+ #include "neptune-protocol/npt_protocol_host_id3d12resource.h"
++
++/* The guest serializes CreateTexture2D initial data as RESOURCE_UPDATE after
++ * creation. UpdateSubresource is not a valid upload API for depth/stencil
++ * textures and skips DXMT's packed D24 conversion. Initialize a CPU staging
++ * texture and copy the complete subresource through the normal D3D11 path.
++ * Keep all payload validation here before passing guest bytes to the backend.
++ */
++static bool
++npt_upload_depth_initial_data(void *resource, ID3D11Device *device,
++                              ID3D11DeviceContext *imm_ctx,
++                              uint32_t subresource, uint32_t row_pitch,
++                              uint32_t byte_size, bool has_box,
++                              const void *payload)
++{
++   D3D11_RESOURCE_DIMENSION dimension = D3D11_RESOURCE_DIMENSION_UNKNOWN;
++   PFN_ID3D11Resource_GetType get_type = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11Resource_GetType, npt_com_vtable(resource),
++      NPT_VTBL_ID3D11Resource_GetType);
++   get_type(resource, &dimension);
++   if (dimension != D3D11_RESOURCE_DIMENSION_TEXTURE2D)
++      return false;
++   D3D11_TEXTURE2D_DESC desc;
++   PFN_ID3D11Texture2D_GetDesc get_desc = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11Texture2D_GetDesc, npt_com_vtable(resource),
++      NPT_VTBL_ID3D11Texture2D_GetDesc);
++   get_desc(resource, &desc);
++   if (!(desc.BindFlags & D3D11_BIND_DEPTH_STENCIL))
++      return false;
++
++   uint32_t bytes_per_pixel;
++   switch (desc.Format) {
++   case DXGI_FORMAT_R16_TYPELESS:
++   case DXGI_FORMAT_D16_UNORM:
++      bytes_per_pixel = 2;
++      break;
++   case DXGI_FORMAT_R32G8X24_TYPELESS:
++   case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
++      bytes_per_pixel = 8;
++      break;
++   case DXGI_FORMAT_R32_TYPELESS:
++   case DXGI_FORMAT_D32_FLOAT:
++   case DXGI_FORMAT_R24G8_TYPELESS:
++   case DXGI_FORMAT_D24_UNORM_S8_UINT:
++      bytes_per_pixel = 4;
++      break;
++   default:
++      return false;
++   }
++   if (has_box || !payload || !desc.MipLevels ||
++       subresource >= (uint64_t)desc.MipLevels * desc.ArraySize ||
++       desc.SampleDesc.Count != 1) {
++      npt_log("depth initial upload rejected: invalid subresource or extent");
++      return true;
++   }
++   uint32_t mip = subresource % desc.MipLevels;
++   if (mip >= 32)
++      return true;
++   desc.Width = desc.Width >> mip ? desc.Width >> mip : 1;
++   desc.Height = desc.Height >> mip ? desc.Height >> mip : 1;
++   uint64_t row_bytes = (uint64_t)desc.Width * bytes_per_pixel;
++   uint64_t required = (uint64_t)(desc.Height - 1) * row_pitch + row_bytes;
++   if (row_pitch < row_bytes || required > byte_size) {
++      npt_log("depth initial upload rejected: payload is smaller than its extent");
++      return true;
++   }
++   desc.MipLevels = desc.ArraySize = 1;
++   desc.Usage = D3D11_USAGE_STAGING;
++   desc.BindFlags = desc.MiscFlags = 0;
++   desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ | D3D11_CPU_ACCESS_WRITE;
++   D3D11_SUBRESOURCE_DATA initial = {payload, row_pitch, 0};
++   ID3D11Texture2D *staging = NULL;
++   PFN_ID3D11Device_CreateTexture2D create = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11Device_CreateTexture2D, npt_com_vtable(device),
++      NPT_VTBL_ID3D11Device_CreateTexture2D);
++   HRESULT hr = create(device, &desc, &initial, &staging);
++   if (NPT_FAILED(hr) || !staging) {
++      npt_log("depth initial upload staging failed: 0x%08x", (unsigned)hr);
++      return true;
++   }
++   PFN_ID3D11DeviceContext_CopySubresourceRegion copy = NPT_COM_VTBL_FUNC(
++      PFN_ID3D11DeviceContext_CopySubresourceRegion, npt_com_vtable(imm_ctx),
++      NPT_VTBL_ID3D11DeviceContext_CopySubresourceRegion);
++   copy(imm_ctx, resource, subresource, 0, 0, 0,
++        (ID3D11Resource *)staging, 0, NULL);
++   npt_com_release(staging);
++   static atomic_uint reported = 0;
++   if (atomic_fetch_add_explicit(&reported, 1, memory_order_relaxed) < 16)
++      npt_log("AstraDepthInitialUpload format=%u width=%u height=%u subresource=%u",
++              (unsigned)desc.Format, desc.Width, desc.Height, subresource);
++   return true;
++}
+ 
+ void
+ npt_resource_update(struct npt_context *ctx,
+                     uint64_t resource_id, uint32_t subresource,
+                     uint32_t row_pitch, uint32_t depth_pitch,
+-                    UNUSED uint32_t byte_size,
++                    uint32_t byte_size,
+                     bool has_box,
+                     uint32_t box_left, uint32_t box_top, uint32_t box_front,
+                     uint32_t box_right, uint32_t box_bottom, uint32_t box_back,
+@@ -109,6 +201,13 @@
+       return;
+    }
+ 
++   if (npt_upload_depth_initial_data(resource, device, imm_ctx, subresource,
++                                     row_pitch, byte_size, has_box, payload)) {
++      npt_com_release(imm_ctx);
++      npt_com_release(device);
++      return;
++   }
++
+    D3D11_BOX box;
+    const D3D11_BOX *box_arg = NULL;
+    if (has_box) {
+@@ -127,6 +226,9 @@
+                         NPT_VTBL_ID3D11DeviceContext_UpdateSubresource);
+    update(imm_ctx, resource, subresource, box_arg, payload,
+           row_pitch, depth_pitch);
++
++   npt_bc6_upload_check(ctx, resource, device, imm_ctx, resource_id,
++                         subresource, row_pitch, byte_size, has_box, payload);
+ 
+    npt_com_release(imm_ctx);
+    npt_com_release(device);

@@ -1,0 +1,20 @@
+diff --git a/src/d3d11/d3d11_context_impl.cpp b/src/d3d11/d3d11_context_impl.cpp
+index 7190503e9009135effd56913f197c28cc1df97d2..991505c42badaa1d386d74b54a037308f17c5949 100644
+--- a/src/d3d11/d3d11_context_impl.cpp
++++ b/src/d3d11/d3d11_context_impl.cpp
+@@ -4196,8 +4196,13 @@
+               cmd = std::move(cmd)](ArgumentEncodingContext &enc) {
+           auto src = enc.access(src_, cmd.Src.MipLevel, cmd.Src.ArraySlice, ResourceAccess::Read);
+           auto [dst, dst_offset] = enc.access(dst_->buffer(), 0, dst_->length, ResourceAccess::Write);
+-          auto offset = cmd.DstOrigin.z * dst_->bytesPerImage + cmd.DstOrigin.y * dst_->bytesPerRow +
+-                        cmd.DstOrigin.x * cmd.DstFormat.BytesPerTexel;
++          // Staging rows of BC textures are addressed in 4x4 blocks.
++          // D3D copy origins remain texel coordinates; keep depth unchanged.
++          const bool compressed_dst = (cmd.DstFormat.Flag & MTL_DXGI_FORMAT_BC) != 0;
++          auto dst_x = compressed_dst ? (cmd.DstOrigin.x >> 2) : cmd.DstOrigin.x;
++          auto dst_y = compressed_dst ? (cmd.DstOrigin.y >> 2) : cmd.DstOrigin.y;
++          auto offset = cmd.DstOrigin.z * dst_->bytesPerImage + dst_y * dst_->bytesPerRow +
++                        dst_x * cmd.DstFormat.BytesPerTexel;
+           auto &cmd_cpbuf = enc.encodeBlitCommand<wmtcmd_blit_copy_from_texture_to_buffer>();
+           cmd_cpbuf.type = WMTBlitCommandCopyFromTextureToBuffer;
+           cmd_cpbuf.src = src;

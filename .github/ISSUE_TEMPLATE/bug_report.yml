@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a problem with Astra Parallel or its source/build instructions.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Describe the problem without credentials, personal paths, clipboard contents, VM files, screenshots containing personal information, or unreviewed diagnostic logs."
+  - type: input
+    id: version
+    attributes:
+      label: Astra source/app version
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: macOS version and Apple Silicon model
+      description: "Use general hardware information only; omit serial numbers and device identifiers."
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: checks
+    attributes:
+      label: Checks already performed
+      description: "Summarize outcomes in your own words and say whether a real Windows guest was involved."

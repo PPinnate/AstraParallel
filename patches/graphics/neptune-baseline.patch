@@ -1,0 +1,3222 @@
+diff --git a/src/virtio/neptune/astra_gpu_trace.h b/src/virtio/neptune/astra_gpu_trace.h
+new file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..8e8680d6e49dab33c1d083aec5b52e6ee82085a0
+--- /dev/null
++++ b/src/virtio/neptune/astra_gpu_trace.h
+@@ -0,0 +1,271 @@
++#ifndef ASTRA_GPU_TRACE_H
++#define ASTRA_GPU_TRACE_H
++#include <stddef.h>
++#include <stdint.h>
++/* Local diagnostic records: no buffers, shaders, inputs, or account data. */
++void astra_gpu_trace(const char *kind, const char *text);
++void astra_gpu_tracef(const char *kind, const char *format, ...);
++void astra_gpu_trace_filtered(const char *kind, const char *text);
++void astra_npt_log(const char *format, ...);
++
++/* ASCII-only basename; never publishes a directory or an untrusted log field. */
++static inline void astra_gpu_sanitized_basename(char *out, size_t capacity,
++                                               const char *image)
++{
++    if (!out || !capacity) return;
++    const char *base = image ? image : "unknown";
++    for (const char *p = base; *p; ++p)
++        if (*p == '\\' || *p == '/') base = p + 1;
++    if (!*base) base = "unknown";
++    size_t i = 0;
++    for (; base[i] && i + 1 < capacity; ++i) {
++        unsigned char c = (unsigned char)base[i];
++        out[i] = ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
++                  (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-')
++                     ? (char)c : '_';
++    }
++    out[i] = 0;
++}
++
++enum astra_present_method {
++    ASTRA_PRESENT_METHOD_PRESENT = 0,
++    ASTRA_PRESENT_METHOD_PRESENT1 = 1
++};
++
++enum astra_present_drop {
++    ASTRA_PRESENT_DROP_NO_KERNEL_CONTEXT = 1u << 0,
++    ASTRA_PRESENT_DROP_NO_CALLBACK = 1u << 1,
++    ASTRA_PRESENT_DROP_NO_ALLOCATION = 1u << 2
++};
++
++struct astra_present_metadata {
++    uint32_t src_ctx, dst_ctx;
++    uint64_t src_object, dst_object;
++    uint32_t method, submitted, drop_mask;
++    uint32_t primary, shared, width, height, format;
++    uint32_t src_allocation, dst_allocation;
++    int32_t result_hr;
++};
++
++/* Only cached scalar metadata; call after presentation locks are released. */
++void astra_gpu_trace_present(const struct astra_present_metadata *metadata);
++
++enum astra_bc6_source_origin {
++    ASTRA_BC6_SOURCE_INITIAL = 0,
++    ASTRA_BC6_SOURCE_UPDATE = 1
++};
++
++/* Cached descriptor scalars identify the single selected source shape.
++ * Only tight-row hashes/counts are emitted; source bytes are never logged. */
++struct astra_bc6_source_metadata {
++    uint32_t ctx;
++    uint64_t resource_id;
++    uint32_t width, height, depth, mip_levels, array_size;
++    uint32_t format, sample_count, usage;
++    uint32_t subresource, row_pitch, copy_size, origin;
++};
++
++/* Neptune override-entry checkpoint, not the original application/DDI entry.
++ * The caller retains only these scalar fingerprints on its own stack until
++ * the host create assigns an opaque resource ID. No source pointer or payload
++ * is retained here; the timestamp is taken immediately before each hash. */
++#define ASTRA_BC6_ENTRY_SUBRESOURCES 48u
++enum astra_bc6_map_match {
++    ASTRA_BC6_MAP_ACTIVE = 1, ASTRA_BC6_MAP_RETIRED,
++    ASTRA_BC6_MAP_AMBIGUOUS, ASTRA_BC6_MAP_NO_MATCH,
++    ASTRA_BC6_MAP_UNAVAILABLE
++};
++enum astra_bc6_map_reason {
++    ASTRA_BC6_MAP_OK = 0, ASTRA_BC6_MAP_NOT_STARTED,
++    ASTRA_BC6_MAP_HISTORY_LOSS, ASTRA_BC6_MAP_TIME_LIMIT,
++    ASTRA_BC6_MAP_TRANSITION_LIMIT, ASTRA_BC6_MAP_QUERY_LIMIT,
++    ASTRA_BC6_MAP_INVALID_QUERY
++};
++enum astra_bc6_map_kind {
++    ASTRA_BC6_MAP_BUFFER = 1, ASTRA_BC6_MAP_TEXTURE = 2
++};
++/* No addresses or retained interfaces in a result: only scalar provenance.
++ * Registry addresses remain private to the logger and are never dereferenced. */
++struct astra_bc6_map_origin {
++    uint32_t match_state, tracking_complete, reason, match_count;
++    uint32_t query_bytes, transitions, queries, evictions, overwrites;
++    uint32_t expired, dropped, active, retired, probe_maps;
++    uint32_t source_ctx, source_subresource, source_kind, source_map_type;
++    uint32_t source_scope, source_bytes, relative_offset;
++    uint32_t source_row_pitch, source_depth_pitch;
++    uint64_t map_age_ms, retired_age_ms, source_generation, source_resource_id;
++};
++struct astra_bc6_entry_fingerprint {
++    uint64_t fnv1a64;
++    uint32_t reserved_blocks, row_pitch, copy_size, tightbytes, valid;
++    uint16_t year, month, day, hour, minute, second, millisecond;
++    struct astra_bc6_map_origin map_origin;
++};
++
++struct astra_bc6_entry_snapshot {
++    uint32_t active, complete, client_kind, captured_rows;
++    struct astra_bc6_entry_fingerprint rows[ASTRA_BC6_ENTRY_SUBRESOURCES];
++};
++
++/* Original Triton DDI input and the actual converted Texture2D descriptor.
++ * Stack-only scalar observation: no source pointers, payload, or COM ownership. */
++struct astra_bc6_ddi_raw_desc {
++    uint32_t dimension, format, usage, map_flags, mip_levels, array_size;
++    uint32_t sample_count, sample_quality, byte_stride, bind_flags, misc_flags;
++    uint32_t initial_data_present, mip_info_present, primary_desc_present;
++    uint32_t texel_width, texel_height, texel_depth;
++    uint32_t physical_width, physical_height, physical_depth;
++};
++struct astra_bc6_ddi_converted_desc {
++    uint32_t width, height, mip_levels, array_size, format;
++    uint32_t sample_count, sample_quality, usage;
++    uint32_t bind_flags, cpu_access_flags, misc_flags, initial_data_present;
++};
++struct astra_bc6_ddi_desc_snapshot {
++    struct astra_bc6_ddi_raw_desc raw;
++    struct astra_bc6_ddi_converted_desc converted;
++    uint32_t admitted, converted_valid, client_kind, seq;
++    uint16_t year, month, day, hour, minute, second, millisecond;
++};
++
++/* Original-DDI initial-data checkpoint, independent of the later entry hash.
++ * Only scalar fingerprints survive the bounded capture; no Map query result,
++ * source pointer, payload copy, or resource reference is retained. */
++#define ASTRA_BC6_DDI_SOURCE_SUBRESOURCES 48u
++struct astra_bc6_ddi_source_fingerprint {
++    uint64_t fnv1a64;
++    uint32_t reserved_blocks, row_pitch, copy_size, tightbytes, valid;
++    uint16_t year, month, day, hour, minute, second, millisecond;
++};
++struct astra_bc6_ddi_source_snapshot {
++    uint32_t active, complete, client_kind, captured_rows;
++    struct astra_bc6_ddi_source_fingerprint rows[ASTRA_BC6_DDI_SOURCE_SUBRESOURCES];
++};
++
++#ifdef _WIN32
++/* Successful begin reserves a whole batch and holds only this observer's lock.
++ * The caller must end its bounded capture before any ordinary Create work. */
++int astra_gpu_trace_bc6_ddi_source_begin(struct astra_bc6_ddi_source_snapshot *snapshot);
++int astra_gpu_trace_bc6_ddi_source_hash(
++    struct astra_bc6_ddi_source_snapshot *snapshot, uint32_t subresource,
++    uint32_t row_pitch, const void *source);
++void astra_gpu_trace_bc6_ddi_source_end(struct astra_bc6_ddi_source_snapshot *snapshot);
++void astra_gpu_trace_bc6_ddi_source_emit(
++    const struct astra_bc6_ddi_source_snapshot *snapshot,
++    uint32_t ctx, uint64_t resource_id);
++int astra_gpu_trace_bc6_ddi_desc_allowed(void);
++void astra_gpu_trace_bc6_ddi_desc_begin(struct astra_bc6_ddi_desc_snapshot *snapshot);
++void astra_gpu_trace_bc6_ddi_desc_emit(
++    const struct astra_bc6_ddi_desc_snapshot *snapshot,
++    uint32_t ctx, uint64_t resource_id);
++/* Reads cached NPT texture identity only; never selects or touches a ring. */
++int astra_gpu_trace_bc6_ddi_resource_identity(
++    void *resource, uint32_t *ctx, uint64_t *resource_id);
++void astra_gpu_trace_map_return(
++    uint32_t ctx, uint64_t resource_id, uint32_t subresource,
++    uint32_t map_type, const void *data, uint32_t bytes, uint32_t source_kind,
++    uint32_t row_pitch, uint32_t depth_pitch);
++void astra_gpu_trace_map_unmap(
++    uint32_t ctx, uint64_t resource_id, uint32_t subresource,
++    const void *data, uint32_t bytes);
++void astra_gpu_trace_map_storage_release(const void *data, uint32_t bytes);
++void astra_gpu_trace_map_probe_begin(void);
++void astra_gpu_trace_map_probe_end(void);
++void astra_gpu_trace_bc6_source(const struct astra_bc6_source_metadata *metadata,
++                               const void *source);
++/* A successful begin holds only the independent diagnostic lock. The caller
++ * must call end after its48 hash calls, before any COM/host/ring interaction. */
++int astra_gpu_trace_bc6_entry_begin(
++    struct astra_bc6_entry_snapshot *snapshot,
++    const struct astra_bc6_source_metadata *shape);
++void astra_gpu_trace_bc6_entry_hash(
++    struct astra_bc6_entry_snapshot *snapshot, uint32_t subresource,
++    uint32_t row_pitch, const void *source);
++void astra_gpu_trace_bc6_entry_end(struct astra_bc6_entry_snapshot *snapshot);
++void astra_gpu_trace_bc6_entry_emit(
++    const struct astra_bc6_entry_snapshot *snapshot,
++    uint32_t ctx, uint64_t resource_id);
++#else
++static inline int astra_gpu_trace_bc6_ddi_source_begin(
++    struct astra_bc6_ddi_source_snapshot *snapshot)
++{ if (snapshot) snapshot->active = snapshot->complete = 0; return 0; }
++static inline int astra_gpu_trace_bc6_ddi_source_hash(
++    struct astra_bc6_ddi_source_snapshot *snapshot, uint32_t subresource,
++    uint32_t row_pitch, const void *source)
++{ (void)snapshot; (void)subresource; (void)row_pitch; (void)source; return 0; }
++static inline void astra_gpu_trace_bc6_ddi_source_end(
++    struct astra_bc6_ddi_source_snapshot *snapshot)
++{ (void)snapshot; }
++static inline void astra_gpu_trace_bc6_ddi_source_emit(
++    const struct astra_bc6_ddi_source_snapshot *snapshot,
++    uint32_t ctx, uint64_t resource_id)
++{ (void)snapshot; (void)ctx; (void)resource_id; }
++static inline int astra_gpu_trace_bc6_ddi_desc_allowed(void) { return 0; }
++static inline void astra_gpu_trace_bc6_ddi_desc_begin(
++    struct astra_bc6_ddi_desc_snapshot *snapshot)
++{ if (snapshot) snapshot->admitted = 0; }
++static inline void astra_gpu_trace_bc6_ddi_desc_emit(
++    const struct astra_bc6_ddi_desc_snapshot *snapshot,
++    uint32_t ctx, uint64_t resource_id)
++{ (void)snapshot; (void)ctx; (void)resource_id; }
++static inline int astra_gpu_trace_bc6_ddi_resource_identity(
++    void *resource, uint32_t *ctx, uint64_t *resource_id)
++{
++    (void)resource;
++    if (ctx) *ctx = 0;
++    if (resource_id) *resource_id = 0;
++    return 0;
++}
++static inline void astra_gpu_trace_map_return(
++    uint32_t ctx, uint64_t resource_id, uint32_t subresource,
++    uint32_t map_type, const void *data, uint32_t bytes, uint32_t source_kind,
++    uint32_t row_pitch, uint32_t depth_pitch)
++{
++    (void)ctx; (void)resource_id; (void)subresource; (void)map_type;
++    (void)data; (void)bytes; (void)source_kind; (void)row_pitch; (void)depth_pitch;
++}
++static inline void astra_gpu_trace_map_unmap(
++    uint32_t ctx, uint64_t resource_id, uint32_t subresource,
++    const void *data, uint32_t bytes)
++{
++    (void)ctx; (void)resource_id; (void)subresource; (void)data; (void)bytes;
++}
++static inline void astra_gpu_trace_map_storage_release(const void *data, uint32_t bytes)
++{ (void)data; (void)bytes; }
++static inline void astra_gpu_trace_map_probe_begin(void) {}
++static inline void astra_gpu_trace_map_probe_end(void) {}
++static inline void
++astra_gpu_trace_bc6_source(const struct astra_bc6_source_metadata *metadata,
++                          const void *source)
++{
++    (void)metadata;
++    (void)source;
++}
++static inline int
++astra_gpu_trace_bc6_entry_begin(struct astra_bc6_entry_snapshot *snapshot,
++                               const struct astra_bc6_source_metadata *shape)
++{
++    (void)shape;
++    if (snapshot) snapshot->active = snapshot->complete = 0;
++    return 0;
++}
++static inline void
++astra_gpu_trace_bc6_entry_hash(struct astra_bc6_entry_snapshot *snapshot,
++                              uint32_t subresource, uint32_t row_pitch,
++                              const void *source)
++{
++    (void)snapshot; (void)subresource; (void)row_pitch; (void)source;
++}
++static inline void
++astra_gpu_trace_bc6_entry_end(struct astra_bc6_entry_snapshot *snapshot)
++{
++    (void)snapshot;
++}
++static inline void
++astra_gpu_trace_bc6_entry_emit(const struct astra_bc6_entry_snapshot *snapshot,
++                              uint32_t ctx, uint64_t resource_id)
++{
++    (void)snapshot; (void)ctx; (void)resource_id;
++}
++#endif
++#endif
+diff --git a/src/virtio/neptune/npt_common.h b/src/virtio/neptune/npt_common.h
+index c957d3b243fe2f406a2fe6c65053c22024de645c..1d98a560ac109853178a31ad785fc38297bd002a 100644
+--- a/src/virtio/neptune/npt_common.h
++++ b/src/virtio/neptune/npt_common.h
+@@ -162,8 +162,13 @@
+ #define npt_log(fmt, ...) npt_log_impl("neptune: " fmt "\n", ##__VA_ARGS__)
+ #define npt_debug(fmt, ...) npt_log_impl("neptune: " fmt "\n", ##__VA_ARGS__)
+ #else
++#ifdef ASTRA_GPU_TRACE
++#include "astra_gpu_trace.h"
++#define npt_log(fmt, ...) astra_npt_log("neptune: " fmt "\n", ##__VA_ARGS__)
++#else
+ #define npt_log(fmt, ...)                                                    \
+    fprintf(stderr, "neptune: " fmt "\n", ##__VA_ARGS__)
++#endif
+ #ifdef NDEBUG
+ #define npt_debug(fmt, ...) ((void)0)
+ #else
+diff --git a/src/virtio/neptune/npt_overrides_d3d11_context.c b/src/virtio/neptune/npt_overrides_d3d11_context.c
+index ba34cd044b0702c5f1929fee5fb9d123ac149622..ca124b08ccafd284fb4820ae7787e2cc7afe5bd7 100644
+--- a/src/virtio/neptune/npt_overrides_d3d11_context.c
++++ b/src/virtio/neptune/npt_overrides_d3d11_context.c
+@@ -14,6 +14,7 @@
+ #include "npt_overrides.h"
+ #include "npt_resource.h"
+ #include "npt_ring.h"
++#include "astra_gpu_trace.h"
+ 
+ #include "neptune-protocol/npt_protocol_client_id3d11devicecontext.h"
+ 
+@@ -38,6 +39,31 @@
+    &NPT_IID_ID3D11DeviceContext4, NULL,
+ };
+ 
++/* Scalar observers only. The ordinary Map/Unmap return values, outputs,
++ * resource ownership, and transport calls remain unchanged. */
++static void
++trace_map_result(void *self, void *resource, UINT subresource, D3D11_MAP map_type,
++                 const D3D11_MAPPED_SUBRESOURCE *mapped, uint32_t bytes,
++                 uint32_t source_kind)
++{
++   struct npt_device *dev = npt_com_self_device(self);
++   astra_gpu_trace_map_return(
++      dev && dev->renderer ? dev->renderer->info.virtio_ctx_id : 0,
++      ((struct npt_com_base *)resource)->base.id, subresource,
++      (uint32_t)map_type, mapped->pData, bytes, source_kind,
++      mapped->RowPitch, mapped->DepthPitch);
++}
++
++static void
++trace_actual_unmap(void *self, void *resource, UINT subresource,
++                   const void *data, uint32_t bytes)
++{
++   struct npt_device *dev = npt_com_self_device(self);
++   astra_gpu_trace_map_unmap(
++      dev && dev->renderer ? dev->renderer->info.virtio_ctx_id : 0,
++      ((struct npt_com_base *)resource)->base.id, subresource, data, bytes);
++}
++
+ static uint32_t
+ npt_d3d11_map_to_access_flags(D3D11_MAP map_type)
+ {
+@@ -77,12 +103,20 @@
+       if (MapType == D3D11_MAP_WRITE_DISCARD)
+          npt_d3d11_buffer_rotate_slot(b);
+       const uint32_t byte_width = npt_d3d11_buffer_get_byte_width(b);
++      const bool initially_seeded = npt_d3d11_buffer_take_initial_map_seed(b);
++      if (initially_seeded && MapType == D3D11_MAP_WRITE_NO_OVERWRITE)
++         astra_gpu_tracef("initial_buffer_nooverwrite",
++                          "ctx=%llu resource_id=%llu bytes=%u",
++                          (unsigned long long)npt_com_self_id(self),
++                          (unsigned long long)npt_com_self_id(b), byte_width);
+       pMappedResource->pData =
+          npt_d3d11_buffer_slot_ptr(b, npt_d3d11_buffer_get_current_slot(b));
+       pMappedResource->RowPitch = byte_width;
+       pMappedResource->DepthPitch = byte_width;
+       npt_d3d11_buffer_set_last_map_access_flags(b, flags);
+       npt_d3d11_buffer_set_is_mapped(b, true);
++      trace_map_result(self, b, Subresource, MapType, pMappedResource,
++                        byte_width, ASTRA_BC6_MAP_BUFFER);
+       return NPT_S_OK;
+    }
+ 
+@@ -109,7 +143,68 @@
+    pMappedResource->DepthPitch = depth_pitch;
+    npt_d3d11_buffer_set_last_map_access_flags(b, 0);
+    npt_d3d11_buffer_set_is_mapped(b, true);
++   trace_map_result(self, b, Subresource, MapType, pMappedResource,
++                     npt_d3d11_buffer_get_byte_width(b), ASTRA_BC6_MAP_BUFFER);
+    return NPT_S_OK;
++}
++
++static HRESULT
++ctx_Map_staging_texture(void *self, struct npt_d3d11_texture *t,
++                        UINT Subresource, D3D11_MAP MapType, UINT MapFlags,
++                        D3D11_MAPPED_SUBRESOURCE *out)
++{
++   memset(out, 0, sizeof(*out));
++   struct npt_d3d11_texture_staging_map *map = NULL;
++   HRESULT hr = npt_d3d11_texture_prepare_staging_map(t, Subresource, &map);
++   if (NPT_FAILED(hr))
++      return hr;
++   const uint64_t context_id = ((struct npt_com_base *)self)->base.id;
++   const uint64_t resource_id = ((struct npt_com_base *)t)->base.id;
++   const uint32_t res_id = npt_d3d_map_ring_slot_res_id(&map->storage, 0);
++   const uint32_t offset = npt_d3d_map_ring_slot_offset(&map->storage, 0);
++   const uint32_t capacity = map->storage.aligned_slot_size;
++   uint32_t row_pitch = 0, depth_pitch = 0;
++   hr = npt_dispatch_resource_map(
++      npt_com_self_ring(self), context_id, resource_id, Subresource,
++      npt_d3d11_map_to_access_flags(MapType), MapFlags, res_id,
++      capacity, map->block_rows, map->depth, offset,
++      &row_pitch, &depth_pitch);
++   if (NPT_FAILED(hr))
++      return hr;
++   const uint64_t size = (uint64_t)row_pitch * map->block_rows * map->depth;
++   if (!size || size > capacity) {
++      /* Balance the successful host Map before rejecting its layout. */
++      npt_dispatch_resource_unmap(npt_com_self_ring(self), context_id,
++         resource_id, Subresource, res_id, capacity, offset, 0);
++      return NPT_E_FAIL;
++   }
++   map->byte_size = (uint32_t)size;
++   map->mapped = true;
++   out->pData = npt_d3d_map_ring_slot_ptr(&map->storage, 0);
++   out->RowPitch = row_pitch;
++   out->DepthPitch = depth_pitch;
++   trace_map_result(self, t, Subresource, MapType, out,
++                     map->byte_size, ASTRA_BC6_MAP_TEXTURE);
++   return NPT_S_OK;
++}
++
++static void
++ctx_Unmap_staging_texture(void *self, struct npt_d3d11_texture *t,
++                          UINT Subresource)
++{
++   struct npt_d3d11_texture_staging_map *map =
++      npt_d3d11_texture_find_staging_map(t, Subresource);
++   if (!map || !map->mapped)
++      return;
++   trace_actual_unmap(self, t, Subresource,
++      npt_d3d_map_ring_slot_ptr(&map->storage, 0), map->byte_size);
++   npt_dispatch_resource_unmap(
++      npt_com_self_ring(self), ((struct npt_com_base *)self)->base.id,
++      ((struct npt_com_base *)t)->base.id, Subresource,
++      npt_d3d_map_ring_slot_res_id(&map->storage, 0), map->byte_size,
++      npt_d3d_map_ring_slot_offset(&map->storage, 0), 0);
++   map->mapped = false;
++   map->byte_size = 0;
+ }
+ 
+ /*
+@@ -124,6 +219,9 @@
+                 D3D11_MAP MapType, UINT MapFlags,
+                 D3D11_MAPPED_SUBRESOURCE *pMappedResource)
+ {
++   if (npt_d3d11_texture_is_staging(t))
++      return ctx_Map_staging_texture(self, t, Subresource, MapType, MapFlags,
++                                     pMappedResource);
+    if (!npt_d3d11_texture_is_mappable(t))
+       return NPT_E_NOTIMPL;
+    if (!npt_d3d11_texture_ensure_map_shmem(t))
+@@ -150,6 +248,8 @@
+          npt_d3d11_texture_set_mapped_state(t, Subresource, cached_rp,
+                                             byte_size,
+                                             npt_d3d11_map_to_access_flags(MapType));
++         trace_map_result(self, t, Subresource, MapType, pMappedResource,
++                           byte_size, ASTRA_BC6_MAP_TEXTURE);
+          return NPT_S_OK;
+       }
+       /* Cached pitch implies a byte_size that overruns one slot
+@@ -164,6 +264,9 @@
+ 
+    uint32_t mip_h = 0, mip_d = 0;
+    npt_d3d11_texture_get_mip_dimensions(t, Subresource, &mip_h, &mip_d);
++   /* The host copies RowPitch * mip_height rows. For BC textures,
++    * send rows of blocks so it cannot read past the mapped mip. */
++   mip_h = npt_dxgi_format_block_rows(npt_d3d11_texture_get_format(t), mip_h);
+ 
+    uint32_t row_pitch = 0, depth_pitch = 0;
+    HRESULT hr = npt_dispatch_resource_map(
+@@ -201,6 +304,8 @@
+    /* access_flags=0 => Unmap reuses sync-MAP map_state. */
+    npt_d3d11_texture_set_mapped_state(t, Subresource, row_pitch,
+                                       byte_size, /*access_flags=*/0);
++   trace_map_result(self, t, Subresource, MapType, pMappedResource,
++                     byte_size, ASTRA_BC6_MAP_TEXTURE);
+    return NPT_S_OK;
+ }
+ 
+@@ -212,6 +317,8 @@
+    const uint32_t access_flags =
+       npt_d3d11_buffer_get_last_map_access_flags(b);
+ 
++   trace_actual_unmap(self, b, Subresource,
++      npt_d3d11_buffer_slot_ptr(b, slot), npt_d3d11_buffer_get_byte_width(b));
+    uint32_t seqno = 0;
+    npt_dispatch_resource_unmap_seqno(ring,
+       ((struct npt_com_base *)self)->base.id,
+@@ -238,6 +345,8 @@
+    const uint32_t access_flags = npt_d3d11_texture_get_last_map_access_flags(t);
+    const uint32_t slot = npt_d3d11_texture_get_current_slot(t);
+ 
++   trace_actual_unmap(self, t, npt_d3d11_texture_get_last_map_subresource(t),
++      npt_d3d11_texture_slot_ptr(t, slot), npt_d3d11_texture_get_last_map_byte_size(t));
+    uint32_t seqno = 0;
+    if (access_flags) {
+       npt_dispatch_resource_unmap_seqno(ring,
+@@ -299,6 +408,10 @@
+    }
+ 
+    struct npt_d3d11_texture *t = npt_d3d11_texture_cast(pResource);
++   if (t && npt_d3d11_texture_is_staging(t)) {
++      ctx_Unmap_staging_texture(self, t, Subresource);
++      return;
++   }
+    if (t && npt_d3d11_texture_get_is_mapped(t))
+       ctx_Unmap_texture(self, t);
+ }
+@@ -411,6 +524,24 @@
+       return;
+    }
+ 
++   if (!pDstBox) {
++      struct npt_d3d11_texture *texture = npt_d3d11_texture_cast(pDstResource);
++      const struct npt_d3d11_texture_aux *identity =
++         texture ? ((struct npt_com_base *)texture)->aux : NULL;
++      if (identity) {
++         const struct astra_bc6_source_metadata metadata = {
++            .ctx = dev->renderer ? dev->renderer->info.virtio_ctx_id : 0,
++            .resource_id = resource_id,
++            .width = identity->width, .height = identity->height,
++            .depth = identity->depth, .mip_levels = identity->mip_levels,
++            .array_size = identity->array_size, .format = identity->format,
++            .sample_count = identity->sample_count, .usage = identity->usage,
++            .subresource = DstSubresource, .row_pitch = SrcRowPitch,
++            .copy_size = (uint32_t)copy_size, .origin = ASTRA_BC6_SOURCE_UPDATE,
++         };
++         astra_gpu_trace_bc6_source(&metadata, pSrcData);
++      }
++   }
+    (void)npt_dispatch_resource_update(npt_device_method_ring(dev), resource_id,
+                                       DstSubresource, SrcRowPitch,
+                                       SrcDepthPitch, pDstBox,
+diff --git a/src/virtio/neptune/npt_overrides_d3d11_device.c b/src/virtio/neptune/npt_overrides_d3d11_device.c
+index 458d8582d20983bd5fd10bb49103f9c4ff33de28..fe3690acf48a29f741b67c1c855f4c0218f130f3 100644
+--- a/src/virtio/neptune/npt_overrides_d3d11_device.c
++++ b/src/virtio/neptune/npt_overrides_d3d11_device.c
+@@ -18,6 +18,7 @@
+ #include "npt_object.h"
+ #include "npt_overrides.h"
+ #include "npt_resource.h"
++#include "astra_gpu_trace.h"
+ 
+ /* Per-device storage: caches the immediate-context wrapper so repeat
+  * GetImmediateContextN calls don't burn an async create + COM_RELEASE.
+@@ -113,6 +114,14 @@
+                                         (struct npt_com_base *)self);
+       if (b && pDesc)
+          npt_d3d11_buffer_set_desc(b, pDesc);
++      if (b && ppBuffer && pDesc && pDesc->Usage == D3D11_USAGE_DYNAMIC &&
++          (pDesc->CPUAccessFlags & D3D11_CPU_ACCESS_WRITE) &&
++          pInitialData && pInitialData->pSysMem && pDesc->ByteWidth &&
++          !npt_d3d11_buffer_seed_initial_map(b, pInitialData->pSysMem)) {
++         npt_com_default_release(b);
++         *ppBuffer = NULL;
++         return NPT_E_OUTOFMEMORY;
++      }
+       if (ppBuffer) {
+          *ppBuffer = (ID3D11Buffer *)b;
+       } else if (b) {
+@@ -145,7 +154,8 @@
+                                 const D3D11_SUBRESOURCE_DATA *init,
+                                 uint32_t num_subresources,
+                                 uint32_t width, uint32_t height, uint32_t depth,
+-                                uint32_t mip_levels, DXGI_FORMAT format)
++                                uint32_t mip_levels, DXGI_FORMAT format,
++                                const struct npt_d3d11_texture_desc *identity)
+ {
+    if (!init || !num_subresources)
+       return;
+@@ -188,6 +198,19 @@
+          copy = full;
+       if (full == 0 || copy == 0 || full > (uint64_t)(64u << 20))
+          continue;
++      if (identity) {
++         const struct astra_bc6_source_metadata metadata = {
++            .ctx = dev->renderer ? dev->renderer->info.virtio_ctx_id : 0,
++            .resource_id = tex_id,
++            .width = identity->width, .height = identity->height,
++            .depth = identity->depth, .mip_levels = identity->mip_levels,
++            .array_size = identity->array_size, .format = identity->format,
++            .sample_count = identity->sample_count, .usage = identity->usage,
++            .subresource = sub, .row_pitch = d->SysMemPitch,
++            .copy_size = (uint32_t)copy, .origin = ASTRA_BC6_SOURCE_INITIAL,
++         };
++         astra_gpu_trace_bc6_source(&metadata, d->pSysMem);
++      }
+       npt_dispatch_resource_update(npt_device_method_ring(dev), tex_id, sub,
+                                    d->SysMemPitch, d->SysMemSlicePitch,
+                                    /*box=*/NULL,
+@@ -218,7 +241,7 @@
+       npt_upload_texture_initial_data(dev, raw_id,
+                                       pInitialData, mips * arr,
+                                       desc->width, desc->height, desc->depth,
+-                                      mips, desc->format);
++                                      mips, desc->format, desc);
+    }
+ 
+    struct npt_d3d11_texture *t = (struct npt_d3d11_texture *)
+@@ -279,12 +302,47 @@
+    return hr;
+ }
+ 
++/* Snapshot every selected face/mip before the Create RPC can reserve a ring
++ * or otherwise interact with host transport. The descriptor array is only
++ * borrowed during this call; the stack snapshot contains no source pointers.
++ * This is Neptune override entry: Triton has already copied DDI descriptors. */
++static void
++capture_bc6_neptune_override_entry(
++   struct astra_bc6_entry_snapshot *snapshot,
++   const struct astra_bc6_source_metadata *shape,
++   const D3D11_SUBRESOURCE_DATA *initial)
++{
++   if (!initial ||
++       (uintptr_t)initial > UINTPTR_MAX -
++          (sizeof(*initial) * ASTRA_BC6_ENTRY_SUBRESOURCES - 1u) ||
++       !astra_gpu_trace_bc6_entry_begin(snapshot, shape))
++      return;
++   for (uint32_t sub = 0; sub < ASTRA_BC6_ENTRY_SUBRESOURCES; ++sub) {
++      const D3D11_SUBRESOURCE_DATA *data = &initial[sub];
++      astra_gpu_trace_bc6_entry_hash(snapshot, sub, data->SysMemPitch,
++                                     data->pSysMem);
++   }
++   astra_gpu_trace_bc6_entry_end(snapshot);
++}
++
+ static HRESULT NPT_STDMETHODCALLTYPE
+ dev_CreateTexture2D_override(void *self,
+                               const D3D11_TEXTURE2D_DESC *pDesc,
+                               const D3D11_SUBRESOURCE_DATA *pInitialData,
+                               ID3D11Texture2D **ppTexture2D)
+ {
++   struct astra_bc6_entry_snapshot entry = {0};
++   if (pDesc && pInitialData &&
++       (uintptr_t)pDesc <= UINTPTR_MAX - (sizeof(*pDesc) - 1u) &&
++       pDesc->SampleDesc.Quality == 0u) {
++      const struct astra_bc6_source_metadata shape = {
++         .width = pDesc->Width, .height = pDesc->Height, .depth = 1u,
++         .mip_levels = pDesc->MipLevels, .array_size = pDesc->ArraySize,
++         .format = pDesc->Format, .sample_count = pDesc->SampleDesc.Count,
++         .usage = pDesc->Usage,
++      };
++      capture_bc6_neptune_override_entry(&entry, &shape, pInitialData);
++   }
+    struct npt_device *dev = npt_com_self_device(self);
+    uint64_t self_id = npt_com_self_id(self);
+ 
+@@ -301,6 +359,9 @@
+    }
+ 
+    if (NPT_SUCCEEDED(hr) && raw && pDesc) {
++      astra_gpu_trace_bc6_entry_emit(
++         &entry, dev->renderer ? dev->renderer->info.virtio_ctx_id : 0,
++         (uint64_t)(uintptr_t)raw);
+       const struct npt_d3d11_texture_desc d = {
+          .width = pDesc->Width,
+          .height = pDesc->Height,
+@@ -376,6 +437,18 @@
+                                const D3D11_SUBRESOURCE_DATA *pInitialData,
+                                ID3D11Texture2D1 **ppTexture2D)
+ {
++   struct astra_bc6_entry_snapshot entry = {0};
++   if (pDesc1 && pInitialData &&
++       (uintptr_t)pDesc1 <= UINTPTR_MAX - (sizeof(*pDesc1) - 1u) &&
++       pDesc1->SampleDesc.Quality == 0u) {
++      const struct astra_bc6_source_metadata shape = {
++         .width = pDesc1->Width, .height = pDesc1->Height, .depth = 1u,
++         .mip_levels = pDesc1->MipLevels, .array_size = pDesc1->ArraySize,
++         .format = pDesc1->Format, .sample_count = pDesc1->SampleDesc.Count,
++         .usage = pDesc1->Usage,
++      };
++      capture_bc6_neptune_override_entry(&entry, &shape, pInitialData);
++   }
+    struct npt_device *dev = npt_com_self_device(self);
+    uint64_t self_id = npt_com_self_id(self);
+ 
+@@ -391,6 +464,9 @@
+    }
+ 
+    if (NPT_SUCCEEDED(hr) && raw && pDesc1) {
++      astra_gpu_trace_bc6_entry_emit(
++         &entry, dev->renderer ? dev->renderer->info.virtio_ctx_id : 0,
++         (uint64_t)(uintptr_t)raw);
+       const struct npt_d3d11_texture_desc d = {
+          .width = pDesc1->Width,
+          .height = pDesc1->Height,
+diff --git a/src/virtio/neptune/npt_renderer_virtgpu_win32.c b/src/virtio/neptune/npt_renderer_virtgpu_win32.c
+index 41a2c2f0be15311338f7be06c54a7084d5385221..ae90cb38108a7db17c8d6e83b05da14ebf65e40e 100644
+--- a/src/virtio/neptune/npt_renderer_virtgpu_win32.c
++++ b/src/virtio/neptune/npt_renderer_virtgpu_win32.c
+@@ -30,6 +30,9 @@
+ #include "neptune-protocol/npt_protocol_defs.h"
+ #include "npt_env.h"
+ #include "npt_renderer.h"
++#include "astra_gpu_trace.h"
++
++#include <stdio.h>
+ 
+ #define VIRTGPU_PCI_VENDOR_ID 0x1af4
+ #define VIRTGPU_PCI_DEVICE_ID 0x1050
+@@ -1287,9 +1290,19 @@
+       .CtxInit = {
+          .CapsetID = NPT_CAPSET_ID,
+          .NumRings = 64,
+-         .DebugName = "neptune-win32",
+       },
+    };
++   {
++      DWORD saved_error = GetLastError();
++      char image[MAX_PATH], basename[37];
++      DWORD len = GetModuleFileNameA(NULL, image, sizeof(image));
++      astra_gpu_sanitized_basename(basename, sizeof(basename),
++                                   len && len < sizeof(image) ? image : "unknown");
++      _snprintf_s((char *)ctx_init.CtxInit.DebugName,
++                  sizeof(ctx_init.CtxInit.DebugName), _TRUNCATE,
++                  "nptw pid=%lu exe=%s", GetCurrentProcessId(), basename);
++      SetLastError(saved_error);
++   }
+    status = virtgpu_escape(gpu, &ctx_init);
+    if (!NT_SUCCESS(status)) {
+       npt_log("virtgpu: CTX_INIT failed 0x%lx", status);
+diff --git a/src/virtio/neptune/npt_resource.c b/src/virtio/neptune/npt_resource.c
+index 305cb4be15a68314c04da5f89c0ccb35156c4302..80e31619b4fc5d60b9b147901270ff6e42c0b8b9 100644
+--- a/src/virtio/neptune/npt_resource.c
++++ b/src/virtio/neptune/npt_resource.c
+@@ -9,6 +9,7 @@
+ #include "npt_resource.h"
+ #include "npt_ring.h"
+ #include "npt_shmem_pool.h"
++#include "astra_gpu_trace.h"
+ 
+ #include "util/list.h"
+ 
+@@ -208,6 +209,11 @@
+     * (queued in npt_com_destroy before this fini runs). */
+    for (uint32_t i = 0; i < r->active_count; i++) {
+       if (r->slots[i].shmem) {
++         /* Invalidate diagnostic intervals before this backing slot can be
++          * released/reused. Allocation capacity is used only to invalidate;
++          * positive Map records use the already-validated logical span. */
++         astra_gpu_trace_map_storage_release(
++            npt_d3d_map_ring_slot_ptr(r, i), r->aligned_slot_size);
+          shmem_reaper_unref(rndr, r->slots[i].shmem);
+          r->slots[i].shmem = NULL;
+          r->slots[i].shmem_res_id = 0;
+@@ -290,6 +296,7 @@
+ {
+    struct npt_d3d11_buffer_aux *aux = com->aux;
+    aux->com = com;
++   aux->initial_shadow_seeded = false;
+    npt_d3d_map_ring_init(&aux->map_ring, com);
+    com->aux_destroy = npt_d3d11_buffer_aux_destroy;
+    (void)dev; (void)host_id;
+@@ -340,6 +347,32 @@
+    return npt_d3d_map_ring_alloc_shmem(&aux->map_ring, slot_size);
+ }
+ 
++bool
++npt_d3d11_buffer_seed_initial_map(struct npt_d3d11_buffer *b, const void *data)
++{
++   struct npt_d3d11_buffer_aux *aux = buf_aux(b);
++   if (!aux || !data || !aux->byte_width ||
++       !npt_d3d11_buffer_ensure_map_shmem(b))
++      return false;
++   /* The first NO_OVERWRITE uses slot 0. Its untouched bytes must agree
++    * with CreateBuffer's initial contents because Unmap transfers the whole
++    * shadow. DISCARD still rotates to another slot and invalidates contents
++    * as before. Copy while the caller's initialization data is still live. */
++   memcpy(npt_d3d_map_ring_slot_ptr(&aux->map_ring, 0), data, aux->byte_width);
++   aux->initial_shadow_seeded = true;
++   return true;
++}
++
++bool
++npt_d3d11_buffer_take_initial_map_seed(struct npt_d3d11_buffer *b)
++{
++   struct npt_d3d11_buffer_aux *aux = buf_aux(b);
++   const bool seeded = aux && aux->initial_shadow_seeded;
++   if (aux)
++      aux->initial_shadow_seeded = false;
++   return seeded;
++}
++
+ uint32_t
+ npt_d3d11_buffer_get_map_shmem_res_id(struct npt_d3d11_buffer *b)
+ {
+@@ -440,6 +473,12 @@
+ npt_d3d11_texture_aux_destroy(void *aux_raw)
+ {
+    struct npt_d3d11_texture_aux *aux = aux_raw;
++   while (aux->staging_maps) {
++      struct npt_d3d11_texture_staging_map *map = aux->staging_maps;
++      aux->staging_maps = map->next;
++      npt_d3d_map_ring_fini(&map->storage);
++      free(map);
++   }
+    npt_d3d_map_ring_fini(&aux->map_ring);
+    free(aux);
+ }
+@@ -466,6 +505,29 @@
+    if (com->aux_destroy != npt_d3d11_texture_aux_destroy) return NULL;
+    return (struct npt_d3d11_texture *)resource;
+ }
++
++#ifdef _WIN32
++int
++astra_gpu_trace_bc6_ddi_resource_identity(void *resource,
++                                           uint32_t *ctx, uint64_t *resource_id)
++{
++   DWORD saved_error = GetLastError();
++   int found = 0;
++   if (ctx) *ctx = 0;
++   if (resource_id) *resource_id = 0;
++   if (!ctx || !resource_id || !npt_d3d11_texture_cast(resource)) goto done;
++   struct npt_device *device = npt_com_self_device(resource);
++   uint64_t id = npt_com_self_id(resource);
++   if (!device || !device->renderer || !device->renderer->info.virtio_ctx_id || !id)
++      goto done;
++   *ctx = device->renderer->info.virtio_ctx_id;
++   *resource_id = id;
++   found = 1;
++done:
++   SetLastError(saved_error);
++   return found;
++}
++#endif
+ 
+ uint32_t
+ npt_dxgi_format_bytes_per_pixel(DXGI_FORMAT fmt)
+@@ -793,7 +855,7 @@
+ {
+    const struct npt_d3d11_texture_aux *aux = tex_aux(t);
+    if (!aux) return false;
+-   if (aux->bytes_per_pixel == 0 ||
++   if ((aux->bytes_per_pixel == 0 && format_block_height(aux->format) != 4) ||
+        aux->width == 0 || aux->height == 0 || aux->depth == 0)
+       return false;
+    if (aux->usage == D3D11_USAGE_DYNAMIC)
+@@ -802,6 +864,26 @@
+       return (aux->cpu_access_flags &
+               (D3D11_CPU_ACCESS_WRITE | D3D11_CPU_ACCESS_READ)) != 0;
+    return false;
++}
++
++bool
++npt_d3d11_texture_is_staging(const struct npt_d3d11_texture *t)
++{
++   const struct npt_d3d11_texture_aux *aux = tex_aux(t);
++   return aux && aux->usage == D3D11_USAGE_STAGING;
++}
++
++struct npt_d3d11_texture_staging_map *
++npt_d3d11_texture_find_staging_map(struct npt_d3d11_texture *t,
++                                  uint32_t subresource)
++{
++   struct npt_d3d11_texture_aux *aux = tex_aux(t);
++   for (struct npt_d3d11_texture_staging_map *map = aux ? aux->staging_maps : NULL;
++        map; map = map->next) {
++      if (map->subresource == subresource)
++         return map;
++   }
++   return NULL;
+ }
+ 
+ static inline uint32_t
+@@ -916,10 +998,15 @@
+    if (!npt_d3d11_texture_is_mappable(t)) return false;
+    struct npt_d3d11_texture_aux *aux = tex_aux(t);
+    if (!aux) return false;
+-   const uint32_t row_bytes = aux->width * aux->bytes_per_pixel;
++   /* BC formats store one element per 4x4 block, not per texel. */
++   const uint32_t row_bytes =
++      npt_dxgi_format_row_bytes(aux->format, aux->width);
++   const uint32_t rows =
++      npt_dxgi_format_block_rows(aux->format, aux->height);
++   if (!row_bytes || !rows) return false;
+    const uint32_t aligned_row_pitch = (row_bytes + 255u) & ~255u;
+    const uint64_t per_slot = (uint64_t)aligned_row_pitch *
+-                             (uint64_t)aux->height *
++                             (uint64_t)rows *
+                              (uint64_t)aux->depth;
+    const uint64_t aligned_slot = (per_slot + 63u) & ~(uint64_t)63u;
+    /* Per-slot cap; slots are lazily allocated up to NPT_D3D_MAP_SLOT_MAX. */
+@@ -928,6 +1015,60 @@
+       return false;
+    }
+    return npt_d3d_map_ring_alloc_shmem(&aux->map_ring, (uint32_t)aligned_slot);
++}
++
++HRESULT
++npt_d3d11_texture_prepare_staging_map(
++   struct npt_d3d11_texture *t, uint32_t subresource,
++   struct npt_d3d11_texture_staging_map **out)
++{
++   *out = NULL;
++   if (!npt_d3d11_texture_is_staging(t) || !npt_d3d11_texture_is_mappable(t))
++      return NPT_E_INVALIDARG;
++   struct npt_d3d11_texture_aux *aux = tex_aux(t);
++   uint32_t mips = aux->mip_levels;
++   if (!mips) {
++      uint32_t largest = aux->width;
++      if (aux->height > largest) largest = aux->height;
++      if (aux->depth > largest) largest = aux->depth;
++      do { ++mips; largest >>= 1; } while (largest);
++   }
++   if (subresource >= (uint64_t)mips * aux->array_size)
++      return NPT_E_INVALIDARG;
++   struct npt_d3d11_texture_staging_map *map =
++      npt_d3d11_texture_find_staging_map(t, subresource);
++   if (map) {
++      if (map->mapped)
++         return NPT_E_INVALIDARG;
++      *out = map;
++      return NPT_S_OK;
++   }
++   const uint32_t mip = subresource % mips;
++   const uint32_t row_bytes =
++      npt_dxgi_format_row_bytes(aux->format, mip_dim(aux->width, mip));
++   const uint32_t rows =
++      npt_dxgi_format_subresource_rows(aux->format, mip_dim(aux->height, mip));
++   const uint32_t depth = mip_dim(aux->depth, mip);
++   const uint64_t aligned_row = ((uint64_t)row_bytes + 255u) & ~(uint64_t)255u;
++   const uint64_t footprint = aligned_row * rows * depth;
++   if (!row_bytes || !rows || !footprint || footprint > (uint64_t)(64u << 20))
++      return NPT_E_OUTOFMEMORY;
++   map = calloc(1, sizeof(*map));
++   if (!map)
++      return NPT_E_OUTOFMEMORY;
++   npt_d3d_map_ring_init(&map->storage, aux->com);
++   if (!npt_d3d_map_ring_alloc_shmem(&map->storage, (uint32_t)footprint)) {
++      npt_d3d_map_ring_fini(&map->storage);
++      free(map);
++      return NPT_E_OUTOFMEMORY;
++   }
++   map->subresource = subresource;
++   map->block_rows = rows;
++   map->depth = depth;
++   map->next = aux->staging_maps;
++   aux->staging_maps = map;
++   *out = map;
++   return NPT_S_OK;
+ }
+ 
+ uint32_t npt_d3d11_texture_get_map_shmem_res_id(const struct npt_d3d11_texture *t)
+diff --git a/src/virtio/neptune/npt_resource.h b/src/virtio/neptune/npt_resource.h
+index 35c39add9d4055290bf5ae20d73464bf30f96067..2269a759f90fc6a43d7cf4c60715d2e6847a18b1 100644
+--- a/src/virtio/neptune/npt_resource.h
++++ b/src/virtio/neptune/npt_resource.h
+@@ -117,6 +117,9 @@
+ uint32_t npt_d3d11_buffer_get_byte_width(struct npt_d3d11_buffer *b);
+ 
+ bool npt_d3d11_buffer_ensure_map_shmem(struct npt_d3d11_buffer *b);
++bool npt_d3d11_buffer_seed_initial_map(struct npt_d3d11_buffer *b,
++                                      const void *data);
++bool npt_d3d11_buffer_take_initial_map_seed(struct npt_d3d11_buffer *b);
+ /* Slot 0's res_id (sync MAP_RESOURCE always lands on slot 0). */
+ uint32_t npt_d3d11_buffer_get_map_shmem_res_id(struct npt_d3d11_buffer *b);
+ /* Per-slot res_id for async Unmap on the rename ring. */
+@@ -196,6 +199,24 @@
+ /* Mappable = USAGE_DYNAMIC + CPU_ACCESS_WRITE + known-bpp format. */
+ bool npt_d3d11_texture_is_mappable(const struct npt_d3d11_texture *t);
+ 
++/* Staging textures permit simultaneous Maps of different subresources.
++ * Each touched subresource retains its own small shadow allocation until
++ * the texture is released; the dynamic-texture rename path is separate. */
++struct npt_d3d11_texture_staging_map {
++   uint32_t subresource;
++   uint32_t block_rows, depth;
++   uint32_t byte_size;
++   bool mapped;
++   struct npt_d3d_map_ring storage;
++   struct npt_d3d11_texture_staging_map *next;
++};
++bool npt_d3d11_texture_is_staging(const struct npt_d3d11_texture *t);
++struct npt_d3d11_texture_staging_map *
++npt_d3d11_texture_find_staging_map(struct npt_d3d11_texture *t, uint32_t subresource);
++HRESULT npt_d3d11_texture_prepare_staging_map(
++   struct npt_d3d11_texture *t, uint32_t subresource,
++   struct npt_d3d11_texture_staging_map **out);
++
+ bool npt_d3d11_texture_ensure_map_shmem(struct npt_d3d11_texture *t);
+ /* Slot 0's res_id (sync MAP_RESOURCE always lands on slot 0). */
+ uint32_t npt_d3d11_texture_get_map_shmem_res_id(const struct npt_d3d11_texture *t);
+@@ -292,6 +313,7 @@
+     * before the wrapper escapes CreateBuffer, like the texture desc. */
+    D3D11_BUFFER_DESC desc;
+    bool has_desc;
++   bool initial_shadow_seeded;
+    struct npt_d3d_map_ring map_ring;
+ };
+ 
+@@ -302,6 +324,7 @@
+  * the rename ring shared with the buffer aux. */
+ struct npt_d3d11_texture_aux {
+    struct npt_com_base *com;
++   struct npt_d3d11_texture_staging_map *staging_maps;
+    uint32_t width, height, depth;
+    uint32_t mip_levels, array_size;
+    DXGI_FORMAT format;
+diff --git a/src/virtio/neptune/triton/astraGpuTrace.c b/src/virtio/neptune/triton/astraGpuTrace.c
+new file mode 100644
+index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..1599f615c1abf5a9538c0717675d9cadf7728b72
+--- /dev/null
++++ b/src/virtio/neptune/triton/astraGpuTrace.c
+@@ -0,0 +1,1372 @@
++/* Bounded diagnostics for the local Astra development driver.
++ * Called outside DllMain; error and Present metadata budgets are independent. */
++#include <windows.h>
++#include <stdio.h>
++#include <stdarg.h>
++#include <string.h>
++#include <ctype.h>
++#include "../astra_gpu_trace.h"
++
++static volatile LONG trace_count;
++
++void astra_gpu_trace(const char *kind, const char *text)
++{
++    DWORD saved_error=GetLastError();
++    if(InterlockedIncrement(&trace_count)>128) {SetLastError(saved_error);return;}
++    char temp[MAX_PATH],path[MAX_PATH],image[MAX_PATH],record[2048];
++    DWORD n=GetTempPathA(sizeof(temp),temp);
++    if(!n || n>=sizeof(temp)) {SetLastError(saved_error);return;}
++    _snprintf_s(path,sizeof(path),_TRUNCATE,"%sAstraGpu-errors-%lu.log",temp,GetCurrentProcessId());
++    n=GetModuleFileNameA(NULL,image,sizeof(image));
++    if(!n || n>=sizeof(image)) strcpy_s(image,sizeof(image),"unknown");
++    const char *client=strrchr(image,'\\');client=client?client+1:image;
++    SYSTEMTIME now;GetSystemTime(&now);
++    _snprintf_s(record,sizeof(record),_TRUNCATE,
++        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 pid=%lu tid=%lu client=%s event=%s %s\n",
++        now.wYear,now.wMonth,now.wDay,now.wHour,now.wMinute,now.wSecond,now.wMilliseconds,
++        GetCurrentProcessId(),GetCurrentThreadId(),client,kind,text?text:"");
++    HANDLE file=CreateFileA(path,FILE_APPEND_DATA,FILE_SHARE_READ|FILE_SHARE_WRITE,
++                            NULL,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,NULL);
++    if(file!=INVALID_HANDLE_VALUE) {
++        DWORD written;WriteFile(file,record,(DWORD)strlen(record),&written,NULL);CloseHandle(file);
++    }
++    SetLastError(saved_error);
++}
++
++void astra_gpu_tracef(const char *kind,const char *format,...)
++{
++    DWORD saved_error=GetLastError();
++    char text[1400];va_list ap;va_start(ap,format);
++    _vsnprintf_s(text,sizeof(text),_TRUNCATE,format,ap);va_end(ap);
++    astra_gpu_trace(kind,text);SetLastError(saved_error);
++}
++
++void astra_gpu_trace_filtered(const char *kind,const char *text)
++{
++    char lowered[1400];size_t i=0;
++    for(;text[i] && i+1<sizeof(lowered);i++)lowered[i]=(char)tolower((unsigned char)text[i]);
++    lowered[i]=0;
++    if(strstr(lowered,"fail") || strstr(lowered,"fatal") || strstr(lowered,"error") ||
++       strstr(lowered,"lost") || strstr(lowered,"watchdog") ||
++       strstr(lowered,"triton: createdevice: interface=") ||
++       strstr(lowered,"triton: stub getresourcelayout ")) astra_gpu_trace(kind,text);
++}
++
++void astra_npt_log(const char *format,...)
++{
++    DWORD saved_error=GetLastError();
++    char text[1400];va_list ap;va_start(ap,format);
++    _vsnprintf_s(text,sizeof(text),_TRUNCATE,format,ap);va_end(ap);
++    fputs(text,stderr);astra_gpu_trace_filtered("neptune",text);SetLastError(saved_error);
++}
++
++#define ASTRA_PRESENT_DISTINCT_LIMIT 64u
++#define ASTRA_PRESENT_RECORD_LIMIT 256u
++#define ASTRA_PRESENT_BYTE_LIMIT (512ull * 1024ull)
++
++struct astra_present_tuple {
++    uint32_t src_ctx, dst_ctx;
++    uint64_t src_object, dst_object;
++    uint32_t method, submitted, drop_mask;
++};
++
++static SRWLOCK present_seen_lock = SRWLOCK_INIT;
++static struct astra_present_tuple present_seen[ASTRA_PRESENT_DISTINCT_LIMIT];
++static uint32_t present_seen_count;
++static uint64_t present_sequence;
++/* Separate from the short identity lock and all driver presentation locks. */
++static SRWLOCK present_writer_lock = SRWLOCK_INIT;
++static uint32_t present_records;
++static uint64_t present_bytes;
++
++static int astra_present_same_tuple(const struct astra_present_tuple *a,
++                                    const struct astra_present_tuple *b)
++{
++    return a->src_ctx == b->src_ctx && a->dst_ctx == b->dst_ctx &&
++           a->src_object == b->src_object && a->dst_object == b->dst_object &&
++           a->method == b->method && a->submitted == b->submitted &&
++           a->drop_mask == b->drop_mask;
++}
++
++void astra_gpu_trace_present(const struct astra_present_metadata *metadata)
++{
++    DWORD saved_error = GetLastError();
++    struct astra_present_tuple tuple;
++    uint64_t sequence;
++    char temp[MAX_PATH], path[MAX_PATH], image[MAX_PATH], client[37];
++    char record[1024], callback_hr[24];
++    DWORD n, written = 0;
++    int record_size;
++    SYSTEMTIME now;
++    HANDLE file = INVALID_HANDLE_VALUE;
++    LARGE_INTEGER file_size;
++    if (!metadata) goto done;
++
++    tuple.src_ctx = metadata->src_ctx;
++    tuple.dst_ctx = metadata->dst_ctx;
++    tuple.src_object = metadata->src_object;
++    tuple.dst_object = metadata->dst_object;
++    tuple.method = metadata->method;
++    tuple.submitted = metadata->submitted;
++    tuple.drop_mask = metadata->drop_mask;
++    AcquireSRWLockExclusive(&present_seen_lock);
++    sequence = ++present_sequence;
++    if (present_seen_count >= ASTRA_PRESENT_DISTINCT_LIMIT) {
++        ReleaseSRWLockExclusive(&present_seen_lock);
++        goto done;
++    }
++    for (uint32_t i = 0; i < present_seen_count; ++i) {
++        if (astra_present_same_tuple(&present_seen[i], &tuple)) {
++            ReleaseSRWLockExclusive(&present_seen_lock);
++            goto done;
++        }
++    }
++    present_seen[present_seen_count++] = tuple;
++    ReleaseSRWLockExclusive(&present_seen_lock);
++
++    n = GetTempPathA(sizeof(temp), temp);
++    if (!n || n >= sizeof(temp)) goto done;
++    if (_snprintf_s(path, sizeof(path), _TRUNCATE, "%sAstraGpu-present-%lu.log",
++                    temp, GetCurrentProcessId()) < 0) goto done;
++    n = GetModuleFileNameA(NULL, image, sizeof(image));
++    astra_gpu_sanitized_basename(client, sizeof(client),
++                                 n && n < sizeof(image) ? image : "unknown");
++    if (metadata->submitted)
++        _snprintf_s(callback_hr, sizeof(callback_hr), _TRUNCATE, "0x%08x",
++                     (unsigned)metadata->result_hr);
++    else
++        strcpy_s(callback_hr, sizeof(callback_hr), "not_called");
++    GetSystemTime(&now);
++    record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
++        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++        "event=present_join pid=%lu tid=%lu client=%s seq=%llu method=%s "
++        "src_ctx=%u src_object=0x%016llx dst_ctx=%u dst_object=0x%016llx "
++        "primary=%u shared=%u width=%u height=%u format=%u "
++        "src_allocation=0x%08x dst_allocation=0x%08x "
++        "submitted=%u outcome=%s drop_mask=0x%x callback_hr=%s return_hr=0x%08x\n",
++        (unsigned)now.wYear, (unsigned)now.wMonth, (unsigned)now.wDay,
++        (unsigned)now.wHour, (unsigned)now.wMinute, (unsigned)now.wSecond,
++        (unsigned)now.wMilliseconds, GetCurrentProcessId(), GetCurrentThreadId(),
++        client, (unsigned long long)sequence,
++        metadata->method == ASTRA_PRESENT_METHOD_PRESENT1 ? "Present1" : "Present",
++        (unsigned)metadata->src_ctx, (unsigned long long)metadata->src_object,
++        (unsigned)metadata->dst_ctx, (unsigned long long)metadata->dst_object,
++        (unsigned)metadata->primary, (unsigned)metadata->shared,
++        (unsigned)metadata->width, (unsigned)metadata->height, (unsigned)metadata->format,
++        (unsigned)metadata->src_allocation, (unsigned)metadata->dst_allocation,
++        (unsigned)metadata->submitted,
++        metadata->submitted ? "submitted_callback" : "dropped_missing_prerequisite",
++        (unsigned)metadata->drop_mask, callback_hr, (unsigned)metadata->result_hr);
++    if (record_size <= 0) goto done;
++
++    AcquireSRWLockExclusive(&present_writer_lock);
++    if (present_records >= ASTRA_PRESENT_RECORD_LIMIT ||
++        present_bytes > ASTRA_PRESENT_BYTE_LIMIT - (uint64_t)record_size)
++        goto writer_done;
++    /* Append only. Read permission is for GetFileSizeEx, never file contents.
++     * Deny other writers while the size check and append are in progress. */
++    file = CreateFileA(path, GENERIC_READ | FILE_APPEND_DATA, FILE_SHARE_READ,
++                        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (file == INVALID_HANDLE_VALUE) goto writer_done;
++    if (!GetFileSizeEx(file, &file_size) || file_size.QuadPart < 0 ||
++        (uint64_t)file_size.QuadPart > ASTRA_PRESENT_BYTE_LIMIT - (uint64_t)record_size)
++        goto writer_done;
++    /* Reserve attempted bytes too, so a failed/partial write cannot expand
++     * the process lifetime budget through retries or external truncation. */
++    ++present_records;
++    present_bytes += (uint64_t)record_size;
++    if (!WriteFile(file, record, (DWORD)record_size, &written, NULL) ||
++        written != (DWORD)record_size)
++        present_records = ASTRA_PRESENT_RECORD_LIMIT;
++writer_done:
++    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
++    ReleaseSRWLockExclusive(&present_writer_lock);
++done:
++    SetLastError(saved_error);
++}
++
++#define ASTRA_BC6_SOURCE_RECORD_LIMIT 6144u
++#define ASTRA_BC6_SOURCE_TIGHT_LIMIT (32ull * 1024ull * 1024ull)
++#define ASTRA_BC6_SOURCE_LOG_LIMIT (16ull * 1024ull * 1024ull)
++#define ASTRA_BC6_SOURCE_TIME_MS 120000ull
++
++/* This diagnostic state is process-local, independent of Present/error
++ * budgets, and serialized across both upload call sites and all ring threads.
++ * The lock is always released before the ordinary transport dispatch. */
++static SRWLOCK bc6_source_lock = SRWLOCK_INIT;
++static uint32_t bc6_source_records;
++static uint64_t bc6_source_tight_bytes, bc6_source_log_bytes, bc6_source_first_ms;
++static int bc6_source_started, bc6_source_stopped;
++
++void astra_gpu_trace_bc6_source(const struct astra_bc6_source_metadata *metadata,
++                               const void *source)
++{
++    DWORD saved_error = GetLastError();
++    char image[MAX_PATH], temp[MAX_PATH], path[MAX_PATH], record[768];
++    const char *client;
++    DWORD n, written = 0;
++    uint32_t mip, side, rows, tight_row, tight_bytes, reserved = 0;
++    uint64_t now_ms, required, hash = 14695981039346656037ull;
++    int record_size;
++    SYSTEMTIME timestamp;
++    HANDLE file = INVALID_HANDLE_VALUE;
++    LARGE_INTEGER file_size;
++
++    /* 1D descriptors have height=1; 3D descriptors have array_size=1.
++     * These cached scalars therefore select only the specified Texture2D
++     * family, including its *1 interface, without a new COM or driver call.
++     * DXGI_FORMAT_BC6H_UF16=95; D3D11_USAGE_DEFAULT=0. */
++    if (!metadata || !source || metadata->width != 128 || metadata->height != 128 ||
++        metadata->depth != 1 || metadata->mip_levels != 8 || metadata->array_size != 6 ||
++        metadata->format != 95 || metadata->sample_count != 1 || metadata->usage != 0 ||
++        metadata->subresource >= 48 || metadata->origin > ASTRA_BC6_SOURCE_UPDATE)
++        goto done;
++    mip = metadata->subresource % 8;
++    side = 128u >> mip;
++    rows = (side + 3u) / 4u;
++    tight_row = rows * 16u;
++    tight_bytes = rows * tight_row;
++    required = (uint64_t)(rows - 1u) * metadata->row_pitch + tight_row;
++    if (metadata->row_pitch < tight_row || required > metadata->copy_size)
++        goto done;
++
++    /* Match the full actual basename before hashing. Truncated image paths,
++     * partial client names, and sanitized near-matches are not admitted. */
++    n = GetModuleFileNameA(NULL, image, sizeof(image));
++    if (!n || n >= sizeof(image)) goto done;
++    client = image;
++    for (const char *p = image; *p; ++p)
++        if (*p == '\\' || *p == '/') client = p + 1;
++    if (strcmp(client, "GenshinImpact.exe") && strcmp(client, "AstraBC6.exe") &&
++        strcmp(client, "AstraBC6MapCreate-x64.exe"))
++        goto done;
++
++    AcquireSRWLockExclusive(&bc6_source_lock);
++    now_ms = GetTickCount64();
++    if (bc6_source_stopped) goto writer_done;
++    if (!bc6_source_started) {
++        bc6_source_started = 1;
++        bc6_source_first_ms = now_ms;
++    }
++    if (now_ms - bc6_source_first_ms >= ASTRA_BC6_SOURCE_TIME_MS ||
++        bc6_source_records >= ASTRA_BC6_SOURCE_RECORD_LIMIT ||
++        bc6_source_tight_bytes > ASTRA_BC6_SOURCE_TIGHT_LIMIT - tight_bytes) {
++        bc6_source_stopped = 1;
++        goto writer_done;
++    }
++    /* Charge attempted work before touching payload or opening the log, so
++     * failed writes and external log truncation cannot enlarge these caps. */
++    ++bc6_source_records;
++    bc6_source_tight_bytes += tight_bytes;
++    for (uint32_t y = 0; y < rows; ++y) {
++        const uint8_t *row = (const uint8_t *)source + (size_t)y * metadata->row_pitch;
++        for (uint32_t x = 0; x < tight_row; ++x) {
++            hash ^= row[x];
++            hash *= 1099511628211ull;
++        }
++        for (uint32_t x = 0; x < tight_row; x += 16u) {
++            const unsigned mode = row[x] & 31u;
++            if ((row[x] & 3u) == 3u &&
++                (mode == 19u || mode == 23u || mode == 27u || mode == 31u))
++                ++reserved;
++        }
++    }
++    GetSystemTime(&timestamp);
++    record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
++        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++        "event=bc6_source pid=%lu client=%s ctx=%u resource_id=%016llx "
++        "subresource=%u row_pitch=%u copy_size=%u tightbytes=%u "
++        "fnv1a64=%016llx reserved_blocks=%u origin=%s\n",
++        (unsigned)timestamp.wYear, (unsigned)timestamp.wMonth, (unsigned)timestamp.wDay,
++        (unsigned)timestamp.wHour, (unsigned)timestamp.wMinute, (unsigned)timestamp.wSecond,
++        (unsigned)timestamp.wMilliseconds, GetCurrentProcessId(), client,
++        (unsigned)metadata->ctx, (unsigned long long)metadata->resource_id,
++        (unsigned)metadata->subresource, (unsigned)metadata->row_pitch,
++        (unsigned)metadata->copy_size, (unsigned)tight_bytes,
++        (unsigned long long)hash, (unsigned)reserved,
++        metadata->origin == ASTRA_BC6_SOURCE_INITIAL ? "initial" : "update");
++    if (record_size <= 0 || bc6_source_log_bytes > ASTRA_BC6_SOURCE_LOG_LIMIT - (uint64_t)record_size) {
++        bc6_source_stopped = 1;
++        goto writer_done;
++    }
++    n = GetTempPathA(sizeof(temp), temp);
++    if (!n || n >= sizeof(temp) ||
++        _snprintf_s(path, sizeof(path), _TRUNCATE, "%sAstraGpu-bc6-source-%lu.log",
++                    temp, GetCurrentProcessId()) < 0) {
++        bc6_source_stopped = 1;
++        goto writer_done;
++    }
++    /* Append-only file access follows the existing Present logger. Read
++     * access is solely for the file size cap; no file contents are read. */
++    file = CreateFileA(path, GENERIC_READ | FILE_APPEND_DATA, FILE_SHARE_READ,
++                        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &file_size) ||
++        file_size.QuadPart < 0 ||
++        (uint64_t)file_size.QuadPart > ASTRA_BC6_SOURCE_LOG_LIMIT - (uint64_t)record_size ||
++        GetTickCount64() - bc6_source_first_ms >= ASTRA_BC6_SOURCE_TIME_MS) {
++        bc6_source_stopped = 1;
++        goto writer_done;
++    }
++    bc6_source_log_bytes += (uint64_t)record_size;
++    if (!WriteFile(file, record, (DWORD)record_size, &written, NULL) ||
++        written != (DWORD)record_size)
++        bc6_source_stopped = 1;
++writer_done:
++    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
++    ReleaseSRWLockExclusive(&bc6_source_lock);
++done:
++    SetLastError(saved_error);
++}
++
++/* Map-origin observer: addresses exist only in this fixed private registry.
++ * No function below reads through them or keeps a COM/resource reference. */
++#define ASTRA_BC6_MAP_RECORDS 512u
++#define ASTRA_BC6_MAP_TRANSITIONS 32768u
++#define ASTRA_BC6_MAP_QUERIES 6144u
++#define ASTRA_BC6_MAP_TIME_MS 120000ull
++#define ASTRA_BC6_MAP_RETIRED_MS 10000ull
++#define ASTRA_BC6_MAP_LOG_LIMIT (16ull * 1024ull * 1024ull)
++
++struct astra_bc6_map_span {
++    uintptr_t start;
++    uint64_t resource_id, generation, mapped_ms, retired_ms;
++    uint32_t state, ctx, subresource, bytes, map_type, kind, scope;
++    uint32_t row_pitch, depth_pitch;
++};
++static SRWLOCK bc6_map_lock = SRWLOCK_INIT;
++static struct astra_bc6_map_span bc6_map_spans[ASTRA_BC6_MAP_RECORDS];
++static uint32_t bc6_map_count, bc6_map_transitions, bc6_map_queries;
++static uint32_t bc6_map_evictions, bc6_map_overwrites, bc6_map_expired;
++static uint32_t bc6_map_dropped, bc6_map_probe_maps;
++static uint64_t bc6_map_first_ms, bc6_map_generation;
++static int bc6_map_started, bc6_map_history_lost;
++static uint32_t bc6_map_stop_reason;
++static volatile LONG bc6_map_client_cache;
++static __declspec(thread) uint32_t bc6_map_probe_depth;
++/* File I/O uses a separate lock, never the registry lock or a Map call. */
++static SRWLOCK bc6_map_log_lock = SRWLOCK_INIT;
++static uint32_t bc6_map_log_records;
++static uint64_t bc6_map_log_bytes;
++static int bc6_map_log_stopped;
++
++static void bc6_map_add_dropped(uint32_t count)
++{
++    bc6_map_dropped = count > UINT32_MAX - bc6_map_dropped
++        ? UINT32_MAX : bc6_map_dropped + count;
++}
++
++static unsigned bc6_map_client_kind(void)
++{
++    LONG cached = InterlockedCompareExchange(&bc6_map_client_cache, 0, 0);
++    if (cached) return cached > 0 ? (unsigned)cached : 0u;
++    char image[MAX_PATH];
++    DWORD size = GetModuleFileNameA(NULL, image, sizeof(image));
++    LONG kind = -1;
++    if (size && size < sizeof(image)) {
++        const char *name = image;
++        for (const char *p = image; *p; ++p)
++            if (*p == '\\' || *p == '/') name = p + 1;
++        if (!strcmp(name, "GenshinImpact.exe")) kind = 1;
++        else if (!strcmp(name, "AstraBC6.exe")) kind = 2;
++        else if (!strcmp(name, "AstraBC6MapCreate-x64.exe")) kind = 3;
++    }
++    cached = InterlockedCompareExchange(&bc6_map_client_cache, kind, 0);
++    if (cached) kind = cached;
++    return kind > 0 ? (unsigned)kind : 0u;
++}
++
++static int bc6_map_span_valid(const void *data, uint32_t bytes)
++{
++    return data && bytes && (uintptr_t)data <= UINTPTR_MAX - (bytes - 1u);
++}
++
++static int bc6_map_overlap(uintptr_t start, uint32_t bytes,
++                           const struct astra_bc6_map_span *span)
++{
++    /* Difference-based comparison avoids overflowing an exclusive end. */
++    return span->state && (start >= span->start
++        ? start - span->start < span->bytes : span->start - start < bytes);
++}
++
++static void bc6_map_stop_locked(uint32_t reason)
++{
++    if (!bc6_map_stop_reason) bc6_map_stop_reason = reason;
++    bc6_map_history_lost = 1;
++    bc6_map_add_dropped(bc6_map_count);
++    memset(bc6_map_spans, 0, sizeof(bc6_map_spans));
++    bc6_map_count = 0;
++}
++
++static int bc6_map_charge_locked(uint32_t count)
++{
++    if (bc6_map_stop_reason) return 0;
++    if (count > ASTRA_BC6_MAP_TRANSITIONS - bc6_map_transitions) {
++        bc6_map_stop_locked(ASTRA_BC6_MAP_TRANSITION_LIMIT);
++        return 0;
++    }
++    bc6_map_transitions += count;
++    return 1;
++}
++
++static int bc6_map_ready_locked(uint64_t now)
++{
++    if (bc6_map_stop_reason) return 0;
++    if (bc6_map_started && now - bc6_map_first_ms >= ASTRA_BC6_MAP_TIME_MS) {
++        bc6_map_stop_locked(ASTRA_BC6_MAP_TIME_LIMIT);
++        return 0;
++    }
++    uint32_t expired = 0;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i)
++        if (bc6_map_spans[i].state == ASTRA_BC6_MAP_RETIRED &&
++            now - bc6_map_spans[i].retired_ms >= ASTRA_BC6_MAP_RETIRED_MS)
++            ++expired;
++    if (!bc6_map_charge_locked(expired)) return 0;
++    if (expired) {
++        for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i)
++            if (bc6_map_spans[i].state == ASTRA_BC6_MAP_RETIRED &&
++                now - bc6_map_spans[i].retired_ms >= ASTRA_BC6_MAP_RETIRED_MS)
++                bc6_map_spans[i].state = 0;
++        bc6_map_count -= expired;
++        bc6_map_expired += expired;
++        bc6_map_history_lost = 1;
++    }
++    return 1;
++}
++
++void astra_gpu_trace_map_probe_begin(void)
++{
++    DWORD saved_error = GetLastError();
++    if (bc6_map_probe_depth != UINT32_MAX) ++bc6_map_probe_depth;
++    SetLastError(saved_error);
++}
++
++void astra_gpu_trace_map_probe_end(void)
++{
++    DWORD saved_error = GetLastError();
++    if (bc6_map_probe_depth) --bc6_map_probe_depth;
++    SetLastError(saved_error);
++}
++
++void astra_gpu_trace_map_return(
++    uint32_t ctx, uint64_t resource_id, uint32_t subresource,
++    uint32_t map_type, const void *data, uint32_t bytes, uint32_t source_kind,
++    uint32_t row_pitch, uint32_t depth_pitch)
++{
++    DWORD saved_error = GetLastError();
++    const int readable = map_type == 1u || map_type == 3u;
++    if (!bc6_map_client_kind()) goto done;
++    AcquireSRWLockExclusive(&bc6_map_lock);
++    if (!bc6_map_span_valid(data, bytes) || !ctx || !resource_id ||
++        (source_kind != ASTRA_BC6_MAP_BUFFER && source_kind != ASTRA_BC6_MAP_TEXTURE)) {
++        /* This observer follows a successful Map. An invalid descriptor
++         * cannot establish non-overlap, including for write-only Maps, so
++         * no previously retained interval remains usable as live evidence. */
++        if (bc6_map_charge_locked(bc6_map_count)) {
++            bc6_map_add_dropped(bc6_map_count + 1u);
++            memset(bc6_map_spans, 0, sizeof(bc6_map_spans));
++            bc6_map_count = 0;
++        }
++        bc6_map_history_lost = 1;
++        goto unlocked;
++    }
++    /* Write-only Maps neither start the window nor scan an empty registry. */
++    if (!readable && !bc6_map_count) goto unlocked;
++    uint64_t now = GetTickCount64();
++    if (!bc6_map_ready_locked(now)) goto unlocked;
++    uint32_t overlap_count = 0;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i)
++        if (bc6_map_overlap((uintptr_t)data, bytes, &bc6_map_spans[i]))
++            ++overlap_count;
++    if (!readable && !overlap_count) goto unlocked;
++    if (!bc6_map_charge_locked(overlap_count)) goto unlocked;
++    if (overlap_count) {
++        for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i)
++            if (bc6_map_overlap((uintptr_t)data, bytes, &bc6_map_spans[i]))
++                bc6_map_spans[i].state = 0;
++        bc6_map_count -= overlap_count;
++        bc6_map_overwrites += overlap_count;
++        bc6_map_history_lost = 1;
++    }
++    if (!readable) goto unlocked;
++
++    uint32_t slot = ASTRA_BC6_MAP_RECORDS;
++    uint32_t victim = ASTRA_BC6_MAP_RECORDS;
++    uint64_t oldest = UINT64_MAX;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i) {
++        if (!bc6_map_spans[i].state) { slot = i; break; }
++        if (bc6_map_spans[i].state == ASTRA_BC6_MAP_RETIRED &&
++            bc6_map_spans[i].generation < oldest) {
++            oldest = bc6_map_spans[i].generation;
++            victim = i;
++        }
++    }
++    if (slot == ASTRA_BC6_MAP_RECORDS && victim == ASTRA_BC6_MAP_RECORDS) {
++        /* Never evict a known live Map just to admit another one. */
++        bc6_map_add_dropped(1);
++        bc6_map_history_lost = 1;
++        goto unlocked;
++    }
++    if (!bc6_map_charge_locked(slot == ASTRA_BC6_MAP_RECORDS ? 2u : 1u))
++        goto unlocked;
++    if (slot == ASTRA_BC6_MAP_RECORDS) {
++        slot = victim;
++        --bc6_map_count;
++        ++bc6_map_evictions;
++        bc6_map_history_lost = 1;
++    }
++    if (!bc6_map_started) {
++        bc6_map_started = 1;
++        bc6_map_first_ms = now;
++    }
++    struct astra_bc6_map_span *span = &bc6_map_spans[slot];
++    memset(span, 0, sizeof(*span));
++    span->start = (uintptr_t)data;
++    span->resource_id = resource_id;
++    span->generation = ++bc6_map_generation;
++    span->mapped_ms = now;
++    span->state = ASTRA_BC6_MAP_ACTIVE;
++    span->ctx = ctx; span->subresource = subresource; span->bytes = bytes;
++    span->map_type = map_type; span->kind = source_kind;
++    span->scope = bc6_map_probe_depth ? 1u : 0u;
++    span->row_pitch = row_pitch; span->depth_pitch = depth_pitch;
++    ++bc6_map_count;
++    if (span->scope) ++bc6_map_probe_maps;
++unlocked:
++    ReleaseSRWLockExclusive(&bc6_map_lock);
++done:
++    SetLastError(saved_error);
++}
++
++void astra_gpu_trace_map_unmap(
++    uint32_t ctx, uint64_t resource_id, uint32_t subresource,
++    const void *data, uint32_t bytes)
++{
++    DWORD saved_error = GetLastError();
++    if (!bc6_map_client_kind() || !bc6_map_span_valid(data, bytes)) goto done;
++    AcquireSRWLockExclusive(&bc6_map_lock);
++    if (!bc6_map_count) goto unlocked;
++    uint64_t now = GetTickCount64();
++    if (!bc6_map_ready_locked(now)) goto unlocked;
++    uint32_t count = 0;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i) {
++        const struct astra_bc6_map_span *span = &bc6_map_spans[i];
++        if (span->state == ASTRA_BC6_MAP_ACTIVE && span->ctx == ctx &&
++            span->resource_id == resource_id && span->subresource == subresource &&
++            span->start == (uintptr_t)data &&
++            span->bytes == bytes) ++count;
++    }
++    if (!bc6_map_charge_locked(count)) goto unlocked;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i) {
++        struct astra_bc6_map_span *span = &bc6_map_spans[i];
++        if (span->state == ASTRA_BC6_MAP_ACTIVE && span->ctx == ctx &&
++            span->resource_id == resource_id && span->subresource == subresource &&
++            span->start == (uintptr_t)data &&
++            span->bytes == bytes) {
++            span->state = ASTRA_BC6_MAP_RETIRED;
++            span->retired_ms = now;
++        }
++    }
++unlocked:
++    ReleaseSRWLockExclusive(&bc6_map_lock);
++done:
++    SetLastError(saved_error);
++}
++
++void astra_gpu_trace_map_storage_release(const void *data, uint32_t bytes)
++{
++    DWORD saved_error = GetLastError();
++    if (!bc6_map_client_kind() || !bc6_map_span_valid(data, bytes)) goto done;
++    AcquireSRWLockExclusive(&bc6_map_lock);
++    if (!bc6_map_count || !bc6_map_ready_locked(GetTickCount64())) goto unlocked;
++    uint32_t count = 0;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i)
++        if (bc6_map_overlap((uintptr_t)data, bytes, &bc6_map_spans[i])) ++count;
++    if (!bc6_map_charge_locked(count)) goto unlocked;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i)
++        if (bc6_map_overlap((uintptr_t)data, bytes, &bc6_map_spans[i]))
++            bc6_map_spans[i].state = 0;
++    if (count) {
++        bc6_map_count -= count;
++        bc6_map_add_dropped(count);
++        bc6_map_history_lost = 1;
++    }
++unlocked:
++    ReleaseSRWLockExclusive(&bc6_map_lock);
++done:
++    SetLastError(saved_error);
++}
++
++static void bc6_map_query(const void *data, uint32_t bytes,
++                           struct astra_bc6_map_origin *result)
++{
++    DWORD saved_error = GetLastError();
++    memset(result, 0, sizeof(*result));
++    result->match_state = ASTRA_BC6_MAP_UNAVAILABLE;
++    result->query_bytes = bytes;
++    AcquireSRWLockExclusive(&bc6_map_lock);
++    uint64_t now = GetTickCount64();
++    if (bc6_map_queries >= ASTRA_BC6_MAP_QUERIES)
++        bc6_map_stop_locked(ASTRA_BC6_MAP_QUERY_LIMIT);
++    else
++        ++bc6_map_queries;
++    if (!bc6_map_span_valid(data, bytes)) {
++        result->reason = ASTRA_BC6_MAP_INVALID_QUERY;
++        goto counters;
++    }
++    if (!bc6_map_ready_locked(now)) {
++        result->reason = bc6_map_stop_reason;
++        goto counters;
++    }
++    if (!bc6_map_started) {
++        result->reason = ASTRA_BC6_MAP_NOT_STARTED;
++        goto counters;
++    }
++    uint32_t chosen = ASTRA_BC6_MAP_RECORDS;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i) {
++        const struct astra_bc6_map_span *span = &bc6_map_spans[i];
++        if (span->state && (uintptr_t)data >= span->start &&
++            (uintptr_t)data - span->start <= span->bytes &&
++            bytes <= span->bytes - ((uintptr_t)data - span->start)) {
++            chosen = i;
++            ++result->match_count;
++        }
++    }
++    result->reason = bc6_map_history_lost ? ASTRA_BC6_MAP_HISTORY_LOSS : ASTRA_BC6_MAP_OK;
++    result->tracking_complete = !bc6_map_history_lost;
++    if (result->match_count > 1) {
++        result->match_state = ASTRA_BC6_MAP_AMBIGUOUS;
++        result->tracking_complete = 0;
++    } else if (!result->match_count) {
++        result->match_state = bc6_map_history_lost ? ASTRA_BC6_MAP_UNAVAILABLE : ASTRA_BC6_MAP_NO_MATCH;
++    } else {
++        const struct astra_bc6_map_span *span = &bc6_map_spans[chosen];
++        result->match_state = span->state;
++        result->source_ctx = span->ctx;
++        result->source_resource_id = span->resource_id;
++        result->source_subresource = span->subresource;
++        result->source_kind = span->kind;
++        result->source_map_type = span->map_type;
++        result->source_scope = span->scope;
++        result->source_bytes = span->bytes;
++        result->relative_offset = (uint32_t)((uintptr_t)data - span->start);
++        result->source_row_pitch = span->row_pitch;
++        result->source_depth_pitch = span->depth_pitch;
++        result->map_age_ms = now - span->mapped_ms;
++        result->retired_age_ms = span->state == ASTRA_BC6_MAP_RETIRED ? now - span->retired_ms : 0;
++        result->source_generation = span->generation;
++    }
++counters:
++    result->transitions = bc6_map_transitions; result->queries = bc6_map_queries;
++    result->evictions = bc6_map_evictions; result->overwrites = bc6_map_overwrites;
++    result->expired = bc6_map_expired; result->dropped = bc6_map_dropped;
++    result->probe_maps = bc6_map_probe_maps;
++    for (uint32_t i = 0; i < ASTRA_BC6_MAP_RECORDS; ++i) {
++        result->active += bc6_map_spans[i].state == ASTRA_BC6_MAP_ACTIVE;
++        result->retired += bc6_map_spans[i].state == ASTRA_BC6_MAP_RETIRED;
++    }
++    ReleaseSRWLockExclusive(&bc6_map_lock);
++    SetLastError(saved_error);
++}
++
++#define ASTRA_BC6_ENTRY_RECORD_LIMIT 6144u
++#define ASTRA_BC6_ENTRY_TIGHT_LIMIT (32ull * 1024ull * 1024ull)
++#define ASTRA_BC6_ENTRY_LOG_LIMIT (16ull * 1024ull * 1024ull)
++#define ASTRA_BC6_ENTRY_TIME_MS 120000ull
++/* Six complete128-square faces, each with8 BC6 mips. Reserve the whole
++ * checkpoint before reading payload, so an admitted capture is never split
++ * by the attempted-row/byte limits halfway through a selected cube. */
++#define ASTRA_BC6_ENTRY_CUBE_TIGHT_BYTES 131232ull
++
++static SRWLOCK bc6_entry_lock = SRWLOCK_INIT;
++static uint32_t bc6_entry_attempted_rows, bc6_entry_log_records;
++static uint64_t bc6_entry_tight_bytes, bc6_entry_log_bytes, bc6_entry_first_ms;
++static int bc6_entry_started, bc6_entry_work_stopped, bc6_entry_log_stopped;
++
++int astra_gpu_trace_bc6_entry_begin(
++    struct astra_bc6_entry_snapshot *snapshot,
++    const struct astra_bc6_source_metadata *shape)
++{
++    DWORD saved_error = GetLastError();
++    char image[MAX_PATH];
++    const char *client;
++    DWORD n;
++    uint32_t client_kind;
++    uint64_t now_ms;
++    int admitted = 0;
++    if (!snapshot) goto done;
++    snapshot->active = snapshot->complete = 0;
++    if (!shape || shape->width != 128u || shape->height != 128u ||
++        shape->depth != 1u || shape->mip_levels != 8u || shape->array_size != 6u ||
++        shape->format != 95u || shape->sample_count != 1u || shape->usage != 0u)
++        goto done;
++    n = GetModuleFileNameA(NULL, image, sizeof(image));
++    if (!n || n >= sizeof(image)) goto done;
++    client = image;
++    for (const char *p = image; *p; ++p)
++        if (*p == '\\' || *p == '/') client = p + 1;
++    if (!strcmp(client, "GenshinImpact.exe")) client_kind = 1u;
++    else if (!strcmp(client, "AstraBC6.exe")) client_kind = 2u;
++    else if (!strcmp(client, "AstraBC6MapCreate-x64.exe")) client_kind = 3u;
++    else goto done;
++
++    AcquireSRWLockExclusive(&bc6_entry_lock);
++    now_ms = GetTickCount64();
++    if (bc6_entry_work_stopped || bc6_entry_log_stopped) goto rejected;
++    if (!bc6_entry_started) {
++        bc6_entry_started = 1;
++        bc6_entry_first_ms = now_ms;
++    }
++    if (now_ms - bc6_entry_first_ms >= ASTRA_BC6_ENTRY_TIME_MS ||
++        bc6_entry_attempted_rows > ASTRA_BC6_ENTRY_RECORD_LIMIT - ASTRA_BC6_ENTRY_SUBRESOURCES ||
++        bc6_entry_tight_bytes > ASTRA_BC6_ENTRY_TIGHT_LIMIT - ASTRA_BC6_ENTRY_CUBE_TIGHT_BYTES) {
++        bc6_entry_work_stopped = 1;
++        goto rejected;
++    }
++    bc6_entry_attempted_rows += ASTRA_BC6_ENTRY_SUBRESOURCES;
++    bc6_entry_tight_bytes += ASTRA_BC6_ENTRY_CUBE_TIGHT_BYTES;
++    memset(snapshot, 0, sizeof(*snapshot));
++    snapshot->client_kind = client_kind;
++    snapshot->active = 1u;
++    admitted = 1;
++    /* The caller's bounded48-iteration capture owns this lock until end.
++     * It is released before self-device access, host RPC, or ring access. */
++    goto done;
++rejected:
++    ReleaseSRWLockExclusive(&bc6_entry_lock);
++done:
++    SetLastError(saved_error);
++    return admitted;
++}
++
++void astra_gpu_trace_bc6_entry_hash(
++    struct astra_bc6_entry_snapshot *snapshot, uint32_t subresource,
++    uint32_t row_pitch, const void *source)
++{
++    DWORD saved_error = GetLastError();
++    uint32_t side, rows, tight_row, tight_bytes, reserved = 0;
++    uint64_t full, required, hash = 14695981039346656037ull;
++    SYSTEMTIME timestamp;
++    struct astra_bc6_entry_fingerprint *row_metadata;
++    if (!snapshot || !snapshot->active || !source ||
++        subresource >= ASTRA_BC6_ENTRY_SUBRESOURCES || bc6_entry_work_stopped)
++        goto done;
++    row_metadata = &snapshot->rows[subresource];
++    if (row_metadata->valid) goto done;
++    side = 128u >> (subresource % 8u);
++    rows = (side + 3u) / 4u;
++    tight_row = rows * 16u;
++    tight_bytes = rows * tight_row;
++    full = (uint64_t)rows * row_pitch;
++    required = (uint64_t)(rows - 1u) * row_pitch + tight_row;
++    /* Match the existing selected BC6 initial-upload readable extent. No
++     * padding bytes are hashed, and the source span cannot wrap uintptr_t.
++     * As at the original D3D path, readable lifetime is the caller contract. */
++    if (row_pitch < tight_row || full == 0 || full > (64ull << 20) ||
++        required > full || required > UINT32_MAX ||
++        (uintptr_t)source > UINTPTR_MAX - (required - 1u))
++        goto done;
++    bc6_map_query(source, (uint32_t)required, &row_metadata->map_origin);
++    GetSystemTime(&timestamp);
++    row_metadata->year = timestamp.wYear;
++    row_metadata->month = timestamp.wMonth;
++    row_metadata->day = timestamp.wDay;
++    row_metadata->hour = timestamp.wHour;
++    row_metadata->minute = timestamp.wMinute;
++    row_metadata->second = timestamp.wSecond;
++    row_metadata->millisecond = timestamp.wMilliseconds;
++    for (uint32_t y = 0; y < rows; ++y) {
++        if (GetTickCount64() - bc6_entry_first_ms >= ASTRA_BC6_ENTRY_TIME_MS) {
++            bc6_entry_work_stopped = 1;
++            goto done;
++        }
++        const uint8_t *row = (const uint8_t *)source + (size_t)y * row_pitch;
++        for (uint32_t x = 0; x < tight_row; ++x) {
++            hash ^= row[x];
++            hash *= 1099511628211ull;
++        }
++        for (uint32_t x = 0; x < tight_row; x += 16u) {
++            const unsigned mode = row[x] & 31u;
++            if ((row[x] & 3u) == 3u &&
++                (mode == 19u || mode == 23u || mode == 27u || mode == 31u))
++                ++reserved;
++        }
++    }
++    row_metadata->fnv1a64 = hash;
++    row_metadata->reserved_blocks = reserved;
++    row_metadata->row_pitch = row_pitch;
++    row_metadata->copy_size = (uint32_t)required;
++    row_metadata->tightbytes = tight_bytes;
++    row_metadata->valid = 1u;
++    ++snapshot->captured_rows;
++done:
++    SetLastError(saved_error);
++}
++
++void astra_gpu_trace_bc6_entry_end(struct astra_bc6_entry_snapshot *snapshot)
++{
++    DWORD saved_error = GetLastError();
++    if (!snapshot || !snapshot->active) goto done;
++    snapshot->complete =
++        snapshot->captured_rows == ASTRA_BC6_ENTRY_SUBRESOURCES &&
++        GetTickCount64() - bc6_entry_first_ms < ASTRA_BC6_ENTRY_TIME_MS;
++    if (GetTickCount64() - bc6_entry_first_ms >= ASTRA_BC6_ENTRY_TIME_MS)
++        bc6_entry_work_stopped = 1;
++    snapshot->active = 0;
++    ReleaseSRWLockExclusive(&bc6_entry_lock);
++done:
++    SetLastError(saved_error);
++}
++
++static const char *bc6_map_match_name(uint32_t value)
++{
++    switch (value) {
++    case ASTRA_BC6_MAP_ACTIVE: return "active";
++    case ASTRA_BC6_MAP_RETIRED: return "retired";
++    case ASTRA_BC6_MAP_AMBIGUOUS: return "ambiguous";
++    case ASTRA_BC6_MAP_NO_MATCH: return "no_match";
++    default: return "unavailable";
++    }
++}
++
++static const char *bc6_map_reason_name(uint32_t value)
++{
++    switch (value) {
++    case ASTRA_BC6_MAP_OK: return "ok";
++    case ASTRA_BC6_MAP_NOT_STARTED: return "not_started";
++    case ASTRA_BC6_MAP_HISTORY_LOSS: return "history_loss";
++    case ASTRA_BC6_MAP_TIME_LIMIT: return "time_limit";
++    case ASTRA_BC6_MAP_TRANSITION_LIMIT: return "transition_limit";
++    case ASTRA_BC6_MAP_QUERY_LIMIT: return "query_limit";
++    default: return "invalid_query";
++    }
++}
++
++static void bc6_map_emit_snapshot(const struct astra_bc6_entry_snapshot *snapshot,
++                                  uint32_t ctx, uint64_t resource_id,
++                                  const char *client)
++{
++    DWORD saved_error = GetLastError();
++    char temp[MAX_PATH], path[MAX_PATH], record[1536];
++    DWORD n, written = 0;
++    HANDLE file = INVALID_HANDLE_VALUE;
++    LARGE_INTEGER file_size;
++    AcquireSRWLockExclusive(&bc6_map_log_lock);
++    if (bc6_map_log_stopped) goto writer_done;
++    if (GetTickCount64() - bc6_entry_first_ms >= ASTRA_BC6_ENTRY_TIME_MS) {
++        bc6_map_log_stopped = 1;
++        goto writer_done;
++    }
++    n = GetTempPathA(sizeof(temp), temp);
++    if (!n || n >= sizeof(temp) ||
++        _snprintf_s(path, sizeof(path), _TRUNCATE, "%sAstraGpu-bc6-map-origin-%lu.log",
++                    temp, GetCurrentProcessId()) < 0) {
++        bc6_map_log_stopped = 1;
++        goto writer_done;
++    }
++    file = CreateFileA(path, GENERIC_READ | FILE_APPEND_DATA, FILE_SHARE_READ,
++                        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &file_size) ||
++        file_size.QuadPart < 0) {
++        bc6_map_log_stopped = 1;
++        goto writer_done;
++    }
++    for (uint32_t sub = 0; sub < ASTRA_BC6_ENTRY_SUBRESOURCES; ++sub) {
++        const struct astra_bc6_entry_fingerprint *fingerprint = &snapshot->rows[sub];
++        const struct astra_bc6_map_origin *origin = &fingerprint->map_origin;
++        int size = _snprintf_s(record, sizeof(record), _TRUNCATE,
++            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++            "event=bc6_map_origin pid=%lu client=%s ctx=%u resource_id=%016llx "
++            "subresource=%u query_bytes=%u match_state=%s tracking_complete=%u "
++            "reason=%s match_count=%u transitions=%u queries=%u evictions=%u "
++            "overwrites=%u expired=%u dropped=%u active=%u retired=%u probe_maps=%u",
++            (unsigned)fingerprint->year, (unsigned)fingerprint->month,
++            (unsigned)fingerprint->day, (unsigned)fingerprint->hour,
++            (unsigned)fingerprint->minute, (unsigned)fingerprint->second,
++            (unsigned)fingerprint->millisecond, GetCurrentProcessId(), client,
++            (unsigned)ctx, (unsigned long long)resource_id, (unsigned)sub,
++            (unsigned)origin->query_bytes, bc6_map_match_name(origin->match_state),
++            (unsigned)origin->tracking_complete, bc6_map_reason_name(origin->reason),
++            (unsigned)origin->match_count, (unsigned)origin->transitions,
++            (unsigned)origin->queries, (unsigned)origin->evictions,
++            (unsigned)origin->overwrites, (unsigned)origin->expired,
++            (unsigned)origin->dropped, (unsigned)origin->active,
++            (unsigned)origin->retired, (unsigned)origin->probe_maps);
++        if (size <= 0) { bc6_map_log_stopped = 1; goto writer_done; }
++        if (origin->match_state == ASTRA_BC6_MAP_ACTIVE ||
++            origin->match_state == ASTRA_BC6_MAP_RETIRED) {
++            int extra = _snprintf_s(record + size, sizeof(record) - (size_t)size, _TRUNCATE,
++                " source_ctx=%u source_resource_id=%016llx source_subresource=%u "
++                "source_kind=%s source_map_type=%u source_scope=%s source_bytes=%u "
++                "relative_offset=%u source_row_pitch=%u source_depth_pitch=%u "
++                "map_age_ms=%llu retired_age_ms=%llu source_generation=%llu",
++                (unsigned)origin->source_ctx, (unsigned long long)origin->source_resource_id,
++                (unsigned)origin->source_subresource,
++                origin->source_kind == ASTRA_BC6_MAP_BUFFER ? "buffer" : "texture",
++                (unsigned)origin->source_map_type,
++                origin->source_scope ? "staging_busy_probe" : "ordinary",
++                (unsigned)origin->source_bytes, (unsigned)origin->relative_offset,
++                (unsigned)origin->source_row_pitch, (unsigned)origin->source_depth_pitch,
++                (unsigned long long)origin->map_age_ms,
++                (unsigned long long)origin->retired_age_ms,
++                (unsigned long long)origin->source_generation);
++            if (extra <= 0) { bc6_map_log_stopped = 1; goto writer_done; }
++            size += extra;
++        }
++        if ((size_t)size + 1u >= sizeof(record) ||
++            bc6_map_log_records >= ASTRA_BC6_ENTRY_RECORD_LIMIT ||
++            bc6_map_log_bytes > ASTRA_BC6_MAP_LOG_LIMIT - (uint64_t)(size + 1) ||
++            (uint64_t)file_size.QuadPart > ASTRA_BC6_MAP_LOG_LIMIT - (uint64_t)(size + 1) ||
++            GetTickCount64() - bc6_entry_first_ms >= ASTRA_BC6_ENTRY_TIME_MS) {
++            bc6_map_log_stopped = 1;
++            goto writer_done;
++        }
++        record[size++] = '\n';
++        ++bc6_map_log_records;
++        bc6_map_log_bytes += (uint64_t)size;
++        if (!WriteFile(file, record, (DWORD)size, &written, NULL) || written != (DWORD)size) {
++            bc6_map_log_stopped = 1;
++            goto writer_done;
++        }
++        file_size.QuadPart += size;
++    }
++writer_done:
++    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
++    ReleaseSRWLockExclusive(&bc6_map_log_lock);
++    SetLastError(saved_error);
++}
++
++void astra_gpu_trace_bc6_entry_emit(
++    const struct astra_bc6_entry_snapshot *snapshot,
++    uint32_t ctx, uint64_t resource_id)
++{
++    DWORD saved_error = GetLastError();
++    char temp[MAX_PATH], path[MAX_PATH], record[768];
++    const char *client;
++    DWORD n, written = 0;
++    HANDLE file = INVALID_HANDLE_VALUE;
++    LARGE_INTEGER file_size;
++    if (!snapshot || snapshot->active || !snapshot->complete ||
++        snapshot->captured_rows != ASTRA_BC6_ENTRY_SUBRESOURCES || !ctx || !resource_id)
++        goto done;
++    client = snapshot->client_kind == 1u ? "GenshinImpact.exe" :
++             snapshot->client_kind == 2u ? "AstraBC6.exe" :
++             snapshot->client_kind == 3u ? "AstraBC6MapCreate-x64.exe" : NULL;
++    if (!client) goto done;
++    for (uint32_t sub = 0; sub < ASTRA_BC6_ENTRY_SUBRESOURCES; ++sub)
++        if (!snapshot->rows[sub].valid) goto done;
++
++    /* Results were copied at entry, before payload hashing. Only now do we
++     * correlate them with the successful Create's opaque destination ID. */
++    bc6_map_emit_snapshot(snapshot, ctx, resource_id, client);
++    AcquireSRWLockExclusive(&bc6_entry_lock);
++    if (bc6_entry_log_stopped) goto writer_done;
++    if (GetTickCount64() - bc6_entry_first_ms >= ASTRA_BC6_ENTRY_TIME_MS) {
++        bc6_entry_work_stopped = bc6_entry_log_stopped = 1;
++        goto writer_done;
++    }
++    n = GetTempPathA(sizeof(temp), temp);
++    if (!n || n >= sizeof(temp) ||
++        _snprintf_s(path, sizeof(path), _TRUNCATE, "%sAstraGpu-bc6-entry-%lu.log",
++                    temp, GetCurrentProcessId()) < 0) {
++        bc6_entry_work_stopped = bc6_entry_log_stopped = 1;
++        goto writer_done;
++    }
++    file = CreateFileA(path, GENERIC_READ | FILE_APPEND_DATA, FILE_SHARE_READ,
++                        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &file_size) ||
++        file_size.QuadPart < 0) {
++        bc6_entry_work_stopped = bc6_entry_log_stopped = 1;
++        goto writer_done;
++    }
++    for (uint32_t sub = 0; sub < ASTRA_BC6_ENTRY_SUBRESOURCES; ++sub) {
++        const struct astra_bc6_entry_fingerprint *fingerprint = &snapshot->rows[sub];
++        int record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
++            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++            "event=bc6_entry pid=%lu client=%s ctx=%u resource_id=%016llx "
++            "subresource=%u row_pitch=%u copy_size=%u tightbytes=%u "
++            "fnv1a64=%016llx reserved_blocks=%u origin=initial\n",
++            (unsigned)fingerprint->year, (unsigned)fingerprint->month,
++            (unsigned)fingerprint->day, (unsigned)fingerprint->hour,
++            (unsigned)fingerprint->minute, (unsigned)fingerprint->second,
++            (unsigned)fingerprint->millisecond, GetCurrentProcessId(), client,
++            (unsigned)ctx, (unsigned long long)resource_id, (unsigned)sub,
++            (unsigned)fingerprint->row_pitch, (unsigned)fingerprint->copy_size,
++            (unsigned)fingerprint->tightbytes,
++            (unsigned long long)fingerprint->fnv1a64,
++            (unsigned)fingerprint->reserved_blocks);
++        if (record_size <= 0 ||
++            bc6_entry_log_records >= ASTRA_BC6_ENTRY_RECORD_LIMIT ||
++            bc6_entry_log_bytes > ASTRA_BC6_ENTRY_LOG_LIMIT - (uint64_t)record_size ||
++            (uint64_t)file_size.QuadPart > ASTRA_BC6_ENTRY_LOG_LIMIT - (uint64_t)record_size ||
++            GetTickCount64() - bc6_entry_first_ms >= ASTRA_BC6_ENTRY_TIME_MS) {
++            bc6_entry_work_stopped = bc6_entry_log_stopped = 1;
++            goto writer_done;
++        }
++        /* Attempted writes and preexisting on-disk bytes both count. */
++        ++bc6_entry_log_records;
++        bc6_entry_log_bytes += (uint64_t)record_size;
++        if (!WriteFile(file, record, (DWORD)record_size, &written, NULL) ||
++            written != (DWORD)record_size) {
++            bc6_entry_work_stopped = bc6_entry_log_stopped = 1;
++            goto writer_done;
++        }
++        file_size.QuadPart += record_size;
++    }
++writer_done:
++    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
++    ReleaseSRWLockExclusive(&bc6_entry_lock);
++done:
++    SetLastError(saved_error);
++}
++
++/* Independent descriptor admission/write budgets. No diagnostic lock survives
++ * begin or spans the existing Create call. A failed Create still uses its
++ * admission; an uncorrelated or expired snapshot produces no evidence row. */
++#define ASTRA_BC6_DDI_DESC_LIMIT 128u
++#define ASTRA_BC6_DDI_DESC_TIME_MS 120000ull
++#define ASTRA_BC6_DDI_DESC_LOG_LIMIT (16ull * 1024ull * 1024ull)
++static SRWLOCK bc6_ddi_desc_lock = SRWLOCK_INIT;
++static uint32_t bc6_ddi_desc_admissions, bc6_ddi_desc_records;
++static uint64_t bc6_ddi_desc_first_ms, bc6_ddi_desc_log_bytes;
++static int bc6_ddi_desc_started, bc6_ddi_desc_stopped;
++
++int astra_gpu_trace_bc6_ddi_desc_allowed(void)
++{
++    DWORD saved_error = GetLastError();
++    int allowed = bc6_map_client_kind() != 0;
++    SetLastError(saved_error);
++    return allowed;
++}
++
++void astra_gpu_trace_bc6_ddi_desc_begin(struct astra_bc6_ddi_desc_snapshot *snapshot)
++{
++    DWORD saved_error = GetLastError();
++    if (!snapshot) goto done;
++    snapshot->admitted = snapshot->converted_valid = 0;
++    unsigned client_kind = bc6_map_client_kind();
++    if (!client_kind) goto done;
++    AcquireSRWLockExclusive(&bc6_ddi_desc_lock);
++    uint64_t now_ms = GetTickCount64();
++    if (bc6_ddi_desc_stopped || bc6_ddi_desc_admissions >= ASTRA_BC6_DDI_DESC_LIMIT)
++        goto unlocked;
++    if (!bc6_ddi_desc_started) {
++        bc6_ddi_desc_started = 1;
++        bc6_ddi_desc_first_ms = now_ms;
++    }
++    if (now_ms - bc6_ddi_desc_first_ms >= ASTRA_BC6_DDI_DESC_TIME_MS) {
++        bc6_ddi_desc_stopped = 1;
++        goto unlocked;
++    }
++    snapshot->seq = ++bc6_ddi_desc_admissions;
++    snapshot->client_kind = client_kind;
++    SYSTEMTIME timestamp;
++    GetSystemTime(&timestamp);
++    snapshot->year = timestamp.wYear;
++    snapshot->month = timestamp.wMonth;
++    snapshot->day = timestamp.wDay;
++    snapshot->hour = timestamp.wHour;
++    snapshot->minute = timestamp.wMinute;
++    snapshot->second = timestamp.wSecond;
++    snapshot->millisecond = timestamp.wMilliseconds;
++    snapshot->admitted = 1;
++unlocked:
++    ReleaseSRWLockExclusive(&bc6_ddi_desc_lock);
++done:
++    SetLastError(saved_error);
++}
++
++void astra_gpu_trace_bc6_ddi_desc_emit(
++    const struct astra_bc6_ddi_desc_snapshot *snapshot,
++    uint32_t ctx, uint64_t resource_id)
++{
++    DWORD saved_error = GetLastError();
++    char temp[MAX_PATH], path[MAX_PATH], record[2048];
++    HANDLE file = INVALID_HANDLE_VALUE;
++    LARGE_INTEGER file_size;
++    DWORD n, written = 0;
++    if (!snapshot || !snapshot->admitted || !snapshot->converted_valid ||
++        !snapshot->seq || snapshot->seq > ASTRA_BC6_DDI_DESC_LIMIT || !ctx || !resource_id)
++        goto done;
++    const char *client = snapshot->client_kind == 1u ? "GenshinImpact.exe" :
++                         snapshot->client_kind == 2u ? "AstraBC6.exe" :
++                         snapshot->client_kind == 3u ? "AstraBC6MapCreate-x64.exe" : NULL;
++    if (!client) goto done;
++    const struct astra_bc6_ddi_raw_desc *raw = &snapshot->raw;
++    const struct astra_bc6_ddi_converted_desc *converted = &snapshot->converted;
++    AcquireSRWLockExclusive(&bc6_ddi_desc_lock);
++    if (bc6_ddi_desc_stopped || !bc6_ddi_desc_started) goto writer_done;
++    if (GetTickCount64() - bc6_ddi_desc_first_ms >= ASTRA_BC6_DDI_DESC_TIME_MS ||
++        bc6_ddi_desc_records >= ASTRA_BC6_DDI_DESC_LIMIT) {
++        bc6_ddi_desc_stopped = 1;
++        goto writer_done;
++    }
++    int record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
++        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++        "event=bc6_ddi_desc pid=%lu client=%s ctx=%u resource_id=%016llx seq=%u "
++        "raw_dimension=%u raw_format=%u raw_usage=%u raw_map_flags=%u "
++        "raw_mip_levels=%u raw_array_size=%u raw_sample_count=%u raw_sample_quality=%u "
++        "raw_byte_stride=%u raw_bind_flags=%u raw_misc_flags=%u "
++        "raw_initial_data_present=%u raw_mip_info_present=%u raw_primary_desc_present=%u "
++        "raw_texel_width=%u raw_texel_height=%u raw_texel_depth=%u "
++        "raw_physical_width=%u raw_physical_height=%u raw_physical_depth=%u "
++        "converted_width=%u converted_height=%u converted_mip_levels=%u converted_array_size=%u "
++        "converted_format=%u converted_sample_count=%u converted_sample_quality=%u "
++        "converted_usage=%u converted_bind_flags=%u converted_cpu_access_flags=%u "
++        "converted_misc_flags=%u converted_initial_data_present=%u\n",
++        (unsigned)snapshot->year, (unsigned)snapshot->month, (unsigned)snapshot->day,
++        (unsigned)snapshot->hour, (unsigned)snapshot->minute, (unsigned)snapshot->second,
++        (unsigned)snapshot->millisecond, GetCurrentProcessId(), client,
++        (unsigned)ctx, (unsigned long long)resource_id, (unsigned)snapshot->seq,
++        (unsigned)raw->dimension, (unsigned)raw->format, (unsigned)raw->usage,
++        (unsigned)raw->map_flags, (unsigned)raw->mip_levels, (unsigned)raw->array_size,
++        (unsigned)raw->sample_count, (unsigned)raw->sample_quality, (unsigned)raw->byte_stride,
++        (unsigned)raw->bind_flags, (unsigned)raw->misc_flags,
++        (unsigned)raw->initial_data_present, (unsigned)raw->mip_info_present,
++        (unsigned)raw->primary_desc_present, (unsigned)raw->texel_width,
++        (unsigned)raw->texel_height, (unsigned)raw->texel_depth,
++        (unsigned)raw->physical_width, (unsigned)raw->physical_height, (unsigned)raw->physical_depth,
++        (unsigned)converted->width, (unsigned)converted->height,
++        (unsigned)converted->mip_levels, (unsigned)converted->array_size,
++        (unsigned)converted->format, (unsigned)converted->sample_count,
++        (unsigned)converted->sample_quality, (unsigned)converted->usage,
++        (unsigned)converted->bind_flags, (unsigned)converted->cpu_access_flags,
++        (unsigned)converted->misc_flags, (unsigned)converted->initial_data_present);
++    if (record_size <= 0 ||
++        bc6_ddi_desc_log_bytes > ASTRA_BC6_DDI_DESC_LOG_LIMIT - (uint64_t)record_size) {
++        bc6_ddi_desc_stopped = 1;
++        goto writer_done;
++    }
++    n = GetTempPathA(sizeof(temp), temp);
++    if (!n || n >= sizeof(temp) ||
++        _snprintf_s(path, sizeof(path), _TRUNCATE, "%sAstraGpu-bc6-ddi-desc-%lu.log",
++                    temp, GetCurrentProcessId()) < 0) {
++        bc6_ddi_desc_stopped = 1;
++        goto writer_done;
++    }
++    file = CreateFileA(path, GENERIC_READ | FILE_APPEND_DATA, FILE_SHARE_READ,
++                        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &file_size) ||
++        file_size.QuadPart < 0 ||
++        (uint64_t)file_size.QuadPart > ASTRA_BC6_DDI_DESC_LOG_LIMIT - (uint64_t)record_size ||
++        GetTickCount64() - bc6_ddi_desc_first_ms >= ASTRA_BC6_DDI_DESC_TIME_MS) {
++        bc6_ddi_desc_stopped = 1;
++        goto writer_done;
++    }
++    /* Charge attempted bytes before writing; truncation cannot renew quota. */
++    ++bc6_ddi_desc_records;
++    bc6_ddi_desc_log_bytes += (uint64_t)record_size;
++    if (!WriteFile(file, record, (DWORD)record_size, &written, NULL) ||
++        written != (DWORD)record_size)
++        bc6_ddi_desc_stopped = 1;
++writer_done:
++    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
++    ReleaseSRWLockExclusive(&bc6_ddi_desc_lock);
++done:
++    SetLastError(saved_error);
++}
++
++/* Original-DDI hashes have independent work/log budgets. No file or Map
++ * observer operation occurs during capture, and end releases this lock before
++ * any normal resource write, conversion, allocation, COM call, or Create. */
++#define ASTRA_BC6_DDI_SOURCE_CREATE_LIMIT 128u
++#define ASTRA_BC6_DDI_SOURCE_RECORD_LIMIT 6144u
++#define ASTRA_BC6_DDI_SOURCE_TIGHT_LIMIT (32ull * 1024ull * 1024ull)
++#define ASTRA_BC6_DDI_SOURCE_BATCH_TIGHT_BYTES 131232ull
++#define ASTRA_BC6_DDI_SOURCE_TIME_MS 120000ull
++#define ASTRA_BC6_DDI_SOURCE_LOG_LIMIT (16ull * 1024ull * 1024ull)
++static SRWLOCK bc6_ddi_source_lock = SRWLOCK_INIT;
++static uint32_t bc6_ddi_source_creates, bc6_ddi_source_attempted_rows, bc6_ddi_source_log_records;
++static uint64_t bc6_ddi_source_tight_bytes, bc6_ddi_source_log_bytes, bc6_ddi_source_first_ms;
++static int bc6_ddi_source_started, bc6_ddi_source_work_stopped, bc6_ddi_source_log_stopped;
++
++int astra_gpu_trace_bc6_ddi_source_begin(struct astra_bc6_ddi_source_snapshot *snapshot)
++{
++    DWORD saved_error = GetLastError();
++    int admitted = 0;
++    if (!snapshot) goto done;
++    snapshot->active = snapshot->complete = 0;
++    unsigned client_kind = bc6_map_client_kind();
++    if (!client_kind) goto done;
++    AcquireSRWLockExclusive(&bc6_ddi_source_lock);
++    uint64_t now_ms = GetTickCount64();
++    if (bc6_ddi_source_work_stopped || bc6_ddi_source_log_stopped) goto rejected;
++    if (!bc6_ddi_source_started) {
++        bc6_ddi_source_started = 1;
++        bc6_ddi_source_first_ms = now_ms;
++    }
++    if (now_ms - bc6_ddi_source_first_ms >= ASTRA_BC6_DDI_SOURCE_TIME_MS ||
++        bc6_ddi_source_creates >= ASTRA_BC6_DDI_SOURCE_CREATE_LIMIT ||
++        bc6_ddi_source_attempted_rows > ASTRA_BC6_DDI_SOURCE_RECORD_LIMIT - ASTRA_BC6_DDI_SOURCE_SUBRESOURCES ||
++        bc6_ddi_source_tight_bytes > ASTRA_BC6_DDI_SOURCE_TIGHT_LIMIT - ASTRA_BC6_DDI_SOURCE_BATCH_TIGHT_BYTES) {
++        bc6_ddi_source_work_stopped = 1;
++        goto rejected;
++    }
++    /* Reserve and charge the whole attempt before reading any UP payload.
++     * Invalid later descriptors, failed Creates, and failed writes refund none. */
++    ++bc6_ddi_source_creates;
++    bc6_ddi_source_attempted_rows += ASTRA_BC6_DDI_SOURCE_SUBRESOURCES;
++    bc6_ddi_source_tight_bytes += ASTRA_BC6_DDI_SOURCE_BATCH_TIGHT_BYTES;
++    memset(snapshot, 0, sizeof(*snapshot));
++    snapshot->client_kind = client_kind;
++    snapshot->active = 1;
++    admitted = 1;
++    goto done;
++rejected:
++    ReleaseSRWLockExclusive(&bc6_ddi_source_lock);
++done:
++    SetLastError(saved_error);
++    return admitted;
++}
++
++int astra_gpu_trace_bc6_ddi_source_hash(
++    struct astra_bc6_ddi_source_snapshot *snapshot, uint32_t subresource,
++    uint32_t row_pitch, const void *source)
++{
++    DWORD saved_error = GetLastError();
++    int captured = 0;
++    uint32_t side, rows, tight_row, tight_bytes, reserved = 0;
++    uint64_t full, required, hash = 14695981039346656037ull;
++    SYSTEMTIME timestamp;
++    struct astra_bc6_ddi_source_fingerprint *row_metadata;
++    if (!snapshot || !snapshot->active || !source ||
++        subresource >= ASTRA_BC6_DDI_SOURCE_SUBRESOURCES ||
++        subresource != snapshot->captured_rows || bc6_ddi_source_work_stopped)
++        goto done;
++    row_metadata = &snapshot->rows[subresource];
++    side = 128u >> (subresource % 8u);
++    rows = (side + 3u) / 4u;
++    tight_row = rows * 16u;
++    tight_bytes = rows * tight_row;
++    full = (uint64_t)rows * row_pitch;
++    required = (uint64_t)(rows - 1u) * row_pitch + tight_row;
++    /* Same bounded 2D readable-span contract and tight-row kernel as entry.
++     * The caller owns readable lifetime; no padding or slice pitch is read. */
++    if (row_pitch < tight_row || full == 0 || full > (64ull << 20) ||
++        required > full || required > UINT32_MAX ||
++        (uintptr_t)source > UINTPTR_MAX - (required - 1u))
++        goto done;
++    GetSystemTime(&timestamp);
++    row_metadata->year = timestamp.wYear;
++    row_metadata->month = timestamp.wMonth;
++    row_metadata->day = timestamp.wDay;
++    row_metadata->hour = timestamp.wHour;
++    row_metadata->minute = timestamp.wMinute;
++    row_metadata->second = timestamp.wSecond;
++    row_metadata->millisecond = timestamp.wMilliseconds;
++    for (uint32_t y = 0; y < rows; ++y) {
++        if (GetTickCount64() - bc6_ddi_source_first_ms >= ASTRA_BC6_DDI_SOURCE_TIME_MS) {
++            bc6_ddi_source_work_stopped = 1;
++            goto done;
++        }
++        const uint8_t *row = (const uint8_t *)source + (size_t)y * row_pitch;
++        for (uint32_t x = 0; x < tight_row; ++x) {
++            hash ^= row[x];
++            hash *= 1099511628211ull;
++        }
++        for (uint32_t x = 0; x < tight_row; x += 16u) {
++            const unsigned mode = row[x] & 31u;
++            if ((row[x] & 3u) == 3u &&
++                (mode == 19u || mode == 23u || mode == 27u || mode == 31u))
++                ++reserved;
++        }
++    }
++    row_metadata->fnv1a64 = hash;
++    row_metadata->reserved_blocks = reserved;
++    row_metadata->row_pitch = row_pitch;
++    row_metadata->copy_size = (uint32_t)required;
++    row_metadata->tightbytes = tight_bytes;
++    row_metadata->valid = 1;
++    ++snapshot->captured_rows;
++    captured = 1;
++done:
++    SetLastError(saved_error);
++    return captured;
++}
++
++void astra_gpu_trace_bc6_ddi_source_end(struct astra_bc6_ddi_source_snapshot *snapshot)
++{
++    DWORD saved_error = GetLastError();
++    if (!snapshot || !snapshot->active) goto done;
++    if (GetTickCount64() - bc6_ddi_source_first_ms >= ASTRA_BC6_DDI_SOURCE_TIME_MS)
++        bc6_ddi_source_work_stopped = 1;
++    snapshot->complete = snapshot->captured_rows == ASTRA_BC6_DDI_SOURCE_SUBRESOURCES &&
++                         !bc6_ddi_source_work_stopped;
++    snapshot->active = 0;
++    ReleaseSRWLockExclusive(&bc6_ddi_source_lock);
++done:
++    SetLastError(saved_error);
++}
++
++void astra_gpu_trace_bc6_ddi_source_emit(
++    const struct astra_bc6_ddi_source_snapshot *snapshot,
++    uint32_t ctx, uint64_t resource_id)
++{
++    DWORD saved_error = GetLastError();
++    char temp[MAX_PATH], path[MAX_PATH], record[768];
++    HANDLE file = INVALID_HANDLE_VALUE;
++    LARGE_INTEGER file_size;
++    DWORD n, written = 0;
++    if (!snapshot || snapshot->active || !snapshot->complete ||
++        snapshot->captured_rows != ASTRA_BC6_DDI_SOURCE_SUBRESOURCES || !ctx || !resource_id)
++        goto done;
++    const char *client = snapshot->client_kind == 1u ? "GenshinImpact.exe" :
++                         snapshot->client_kind == 2u ? "AstraBC6.exe" :
++                         snapshot->client_kind == 3u ? "AstraBC6MapCreate-x64.exe" : NULL;
++    if (!client) goto done;
++    for (uint32_t sub = 0; sub < ASTRA_BC6_DDI_SOURCE_SUBRESOURCES; ++sub)
++        if (!snapshot->rows[sub].valid) goto done;
++    AcquireSRWLockExclusive(&bc6_ddi_source_lock);
++    if (bc6_ddi_source_log_stopped) goto writer_done;
++    if (GetTickCount64() - bc6_ddi_source_first_ms >= ASTRA_BC6_DDI_SOURCE_TIME_MS) {
++        bc6_ddi_source_work_stopped = bc6_ddi_source_log_stopped = 1;
++        goto writer_done;
++    }
++    n = GetTempPathA(sizeof(temp), temp);
++    if (!n || n >= sizeof(temp) ||
++        _snprintf_s(path, sizeof(path), _TRUNCATE, "%sAstraGpu-bc6-ddi-source-%lu.log",
++                    temp, GetCurrentProcessId()) < 0) {
++        bc6_ddi_source_work_stopped = bc6_ddi_source_log_stopped = 1;
++        goto writer_done;
++    }
++    file = CreateFileA(path, GENERIC_READ | FILE_APPEND_DATA, FILE_SHARE_READ,
++                        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
++    if (file == INVALID_HANDLE_VALUE || !GetFileSizeEx(file, &file_size) || file_size.QuadPart < 0) {
++        bc6_ddi_source_work_stopped = bc6_ddi_source_log_stopped = 1;
++        goto writer_done;
++    }
++    for (uint32_t sub = 0; sub < ASTRA_BC6_DDI_SOURCE_SUBRESOURCES; ++sub) {
++        const struct astra_bc6_ddi_source_fingerprint *row = &snapshot->rows[sub];
++        int record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
++            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++            "event=bc6_ddi_source pid=%lu client=%s ctx=%u resource_id=%016llx "
++            "subresource=%u row_pitch=%u copy_size=%u tightbytes=%u "
++            "fnv1a64=%016llx reserved_blocks=%u origin=initial\n",
++            (unsigned)row->year, (unsigned)row->month, (unsigned)row->day,
++            (unsigned)row->hour, (unsigned)row->minute, (unsigned)row->second,
++            (unsigned)row->millisecond, GetCurrentProcessId(), client,
++            (unsigned)ctx, (unsigned long long)resource_id, (unsigned)sub,
++            (unsigned)row->row_pitch, (unsigned)row->copy_size, (unsigned)row->tightbytes,
++            (unsigned long long)row->fnv1a64, (unsigned)row->reserved_blocks);
++        if (record_size <= 0 ||
++            bc6_ddi_source_log_records >= ASTRA_BC6_DDI_SOURCE_RECORD_LIMIT ||
++            bc6_ddi_source_log_bytes > ASTRA_BC6_DDI_SOURCE_LOG_LIMIT - (uint64_t)record_size ||
++            (uint64_t)file_size.QuadPart > ASTRA_BC6_DDI_SOURCE_LOG_LIMIT - (uint64_t)record_size ||
++            GetTickCount64() - bc6_ddi_source_first_ms >= ASTRA_BC6_DDI_SOURCE_TIME_MS) {
++            bc6_ddi_source_work_stopped = bc6_ddi_source_log_stopped = 1;
++            goto writer_done;
++        }
++        ++bc6_ddi_source_log_records;
++        bc6_ddi_source_log_bytes += (uint64_t)record_size;
++        if (!WriteFile(file, record, (DWORD)record_size, &written, NULL) ||
++            written != (DWORD)record_size) {
++            bc6_ddi_source_work_stopped = bc6_ddi_source_log_stopped = 1;
++            goto writer_done;
++        }
++        file_size.QuadPart += record_size;
++    }
++writer_done:
++    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
++    ReleaseSRWLockExclusive(&bc6_ddi_source_lock);
++done:
++    SetLastError(saved_error);
++}
+diff --git a/src/virtio/neptune/triton/meson.build b/src/virtio/neptune/triton/meson.build
+index 0ced247e48b65132b0d422aa612432b65500e1f4..0e20af0407bd76f1e38cd0d7f4377cbb93ed3654 100644
+--- a/src/virtio/neptune/triton/meson.build
++++ b/src/virtio/neptune/triton/meson.build
+@@ -3,6 +3,7 @@
+ 
+ triton_src = files(
+   'triton.c',
++  'astraGpuTrace.c',
+   'tritonDDI.c',
+   'tritonDDI12.c',
+   'tritonDescriptor12.c',
+@@ -36,7 +37,7 @@
+          '../npt_entry_d3d12.c')],
+   include_directories : triton_incs,
+   dependencies : npt_deps,
+-  c_args : npt_c_args,
++  c_args : npt_c_args + ['-DASTRA_GPU_TRACE=1'],
+   # d3d10umddi.h redeclares many D3D10_* numeric constants as file-scope
+   # `const UINT` variables on top of the #define forms in d3d10.h.  In C
+   # those have external linkage, so every TU that includes the umddi
+diff --git a/src/virtio/neptune/triton/triton.h b/src/virtio/neptune/triton/triton.h
+index 29bdb689f12f40c417d2bb943a2ce4a2b542bc5d..77b0a07a4584128ae273cbd8b5b5bf6fa40b0716 100644
+--- a/src/virtio/neptune/triton/triton.h
++++ b/src/virtio/neptune/triton/triton.h
+@@ -58,6 +58,7 @@
+ } TRITON_ADAPTER, *PTRITON_ADAPTER;
+ 
+ struct TRITON_SHADER;
++struct TRITON_SO_ALIAS;
+ struct TRITON_ELEMENTLAYOUT;
+ 
+ typedef struct TRITON_DEVICE {
+@@ -83,6 +84,8 @@
+      * owning TRITON_SHADER / TRITON_ELEMENTLAYOUT may be destroyed while
+      * still referenced here; we clear from those destroy paths. */
+     struct TRITON_SHADER           *pCurrentVS;
++    struct TRITON_SHADER           *pCurrentGS;
++    struct TRITON_SHADER           *pCurrentDS;
+     struct TRITON_ELEMENTLAYOUT    *pCurrentLayout;
+ 
+     /* The reconciled VS currently bound on the context, or NULL when the app's
+@@ -241,11 +244,17 @@
+  * import it.  Value is ABI with the host dxvk build. */
+ #define TRITON_D3D11_MISC_LINEAR_EXPORT 0x40000000u
+ 
+-static inline void tritonSetError(PTRITON_DEVICE pD, HRESULT hr)
++#include "../astra_gpu_trace.h"
++static inline void tritonSetErrorImpl(PTRITON_DEVICE pD, HRESULT hr, const char *function, unsigned line)
+ {
++#ifdef ASTRA_GPU_TRACE
++    if(FAILED(hr) && hr!=DXGI_DDI_ERR_WASSTILLDRAWING && hr!=DXGI_ERROR_WAS_STILL_DRAWING)
++        astra_gpu_tracef("SetError","hr=0x%08lx function=%s line=%u",hr,function,line);
++#endif
+     if (pD && pD->pUMCallbacks && pD->pUMCallbacks->pfnSetErrorCb)
+         pD->pUMCallbacks->pfnSetErrorCb(pD->hRTCoreLayer, hr);
+ }
++#define tritonSetError(device,result) tritonSetErrorImpl(device,result,__func__,__LINE__)
+ 
+ /* Map the DDI's D3DWDDM2_0DDI_CONTEXTTYPE_FLAG bit flag to the sequential
+  * D3D11_CONTEXT_TYPE enum (they diverge at COPY/VIDEO). Defined in
+@@ -355,6 +364,10 @@
+     D3D10DDIARG_INPUT_ELEMENT_DESC *pElements;  /* heap copy (driver-owned) */
+     ID3D11InputLayout              *pLayout;    /* NULL until first VS is known */
+     UINT64                          LayoutVsCookie; /* cookie of the VS pLayout was built against; 0 = none */
++    UINT64                          AstraResolvedCookie;
++    UINT                            AstraMatchedInputs;
++    UINT                            AstraSignatureInputs;
++    BOOL                            AstraDrawTraced;
+     /* Reconciled VS: a private copy of the bound VS whose input-signature
+      * component types are retyped from this layout's vertex formats, so
+      * D3DMetal's shader-side fetch reads integer inputs correctly. Bound in
+@@ -381,6 +394,7 @@
+     void                  *pBytecode;   /* heap copy; freed on destroy */
+     SIZE_T                 cbBytecode;
+     UINT64                 cookie;       /* unique instance id; input-layout cache key */
++    struct TRITON_SO_ALIAS *pSOAlias;     /* declaration-only SO, resolved against VS/DS at bind */
+     union {
+         ID3D11DeviceChild       *pDeviceChild;
+         ID3D11VertexShader      *pVS;
+@@ -392,6 +406,10 @@
+     } u;
+ } TRITON_SHADER, *PTRITON_SHADER;
+ 
++/* Resolve declaration-only stream output only after final draw state is known. */
++BOOL tritonResolveStreamOutput(PTRITON_DEVICE pD);
++void tritonTraceInputLayoutDraw(PTRITON_DEVICE pD, const char *site);
++
+ /* View-list plumbing + rotation support (tritonView.c). */
+ void tritonResourceLinkView(PTRITON_RESOURCE r, TRITON_VIEWLINK *l,
+                             TRITON_VIEW_KIND kind);
+diff --git a/src/virtio/neptune/triton/tritonDDI.c b/src/virtio/neptune/triton/tritonDDI.c
+index d64ccb26c74a920db74cfce0dc62598b6dbdffb6..92ee7788bd4c86f3b0d493fccab7d011ee467c99 100644
+--- a/src/virtio/neptune/triton/tritonDDI.c
++++ b/src/virtio/neptune/triton/tritonDDI.c
+@@ -436,8 +436,8 @@
+     p->pfnSetTextFilterSize                         = (PFND3D10DDI_SETTEXTFILTERSIZE)TR_STUB_V;
+ 
+     /* 10.1 entries */
+-    p->pfnResourceConvert                           = (PFND3D10DDI_RESOURCECOPY)TR_STUB_V;
+-    p->pfnResourceConvertRegion                     = (PFND3D10DDI_RESOURCECOPYREGION)TR_STUB_V;
++    p->pfnResourceConvert                           = tritonResourceCopy;
++    p->pfnResourceConvertRegion                     = tritonResourceCopyRegion;
+ 
+     /* 11.0 entries */
+     p->pfnDrawIndexedInstancedIndirect              = tritonDrawIndexedInstancedIndirect;
+@@ -506,6 +506,7 @@
+     p->pfnDsSetConstantBuffers                      = tritonCs_DS_Set11_1;
+     p->pfnCsSetConstantBuffers                      = tritonCs_CS_Set11_1;
+     p->pfnResourceCopyRegion                        = tritonResourceCopyRegion_11_1;
++    p->pfnResourceConvertRegion                     = tritonResourceCopyRegion_11_1;
+     p->pfnResourceUpdateSubresourceUP               = tritonResourceUpdateSubresourceUP_11_1;
+     p->pfnFlush                                     = tritonFlush11_1;
+     p->pfnCalcPrivateBlendStateSize                 = tritonCalcPrivateBlendStateSize;
+@@ -830,6 +831,8 @@
+     p->pCtx3          = NULL;
+     p->FeatureLevel   = D3D_FEATURE_LEVEL_11_0;
+     p->pCurrentVS     = NULL;
++    p->pCurrentGS     = NULL;
++    p->pCurrentDS     = NULL;
+     p->pCurrentLayout = NULL;
+     p->nextShaderCookie = 0;
+     p->hRTCoreLayer   = pArgs->hRTCoreLayer;
+@@ -1326,6 +1329,7 @@
+ __declspec(dllexport)
+ HRESULT APIENTRY OpenAdapter10_2(D3D10DDIARG_OPENADAPTER *pOpenData)
+ {
++    astra_gpu_trace("adapter_open","interface=D3D11");
+     TR_LOG("OpenAdapter10_2: Interface=0x%08x Version=0x%08x",
+            pOpenData->Interface, pOpenData->Version);
+ 
+diff --git a/src/virtio/neptune/triton/tritonDxgi.c b/src/virtio/neptune/triton/tritonDxgi.c
+index 7f26fc5de0569328978092649e4e80cdee7881aa..7be6abe4b83306d5c997b1334c454f191482485e 100644
+--- a/src/virtio/neptune/triton/tritonDxgi.c
++++ b/src/virtio/neptune/triton/tritonDxgi.c
+@@ -14,6 +14,7 @@
+ #include "triton_log.h"
+ #include "tritonDxgi.h"
+ #include "tritonPresent.h"
++#include "tritonSharedBridge.h"
+ #include "npt_env.h"
+ #include "tritonPresentTiming.h"
+ 
+@@ -566,6 +567,31 @@
+    return hr;
+ }
+ 
++#ifdef ASTRA_GPU_TRACE
++static struct astra_present_metadata
++tritonPresentMetadata(PTRITON_RESOURCE src, PTRITON_RESOURCE dst, uint32_t method)
++{
++   struct astra_present_metadata metadata = {0};
++   metadata.method = method;
++   if (src) {
++      tritonSharedBridgeObjectIdentity(src->pResource, &metadata.src_ctx,
++                                       &metadata.src_object);
++      metadata.primary = src->IsPresentable != FALSE;
++      metadata.shared = src->IsShared != FALSE;
++      metadata.width = src->Width;
++      metadata.height = src->Height;
++      metadata.format = (uint32_t)src->Format;
++      metadata.src_allocation = src->hKMAllocation;
++   }
++   if (dst) {
++      tritonSharedBridgeObjectIdentity(dst->pResource, &metadata.dst_ctx,
++                                       &metadata.dst_object);
++      metadata.dst_allocation = dst->hKMAllocation;
++   }
++   return metadata;
++}
++#endif
++
+ static HRESULT APIENTRY
+ tritonDxgiPresent(DXGI_DDI_ARG_PRESENT *pArgs)
+ {
+@@ -580,6 +606,10 @@
+    if (!pD || !src) return E_INVALIDARG;
+    /* Pin the device for the whole present (see presentInFlight in triton.h). */
+    InterlockedIncrement(&pD->presentInFlight);
++#ifdef ASTRA_GPU_TRACE
++   struct astra_present_metadata metadata =
++      tritonPresentMetadata(src, dst, ASTRA_PRESENT_METHOD_PRESENT);
++#endif
+    /* Windowed flip-model devices never created a primary, so the kernel
+     * context may not exist yet; create it here or the present is lost. */
+    if (!pD->hKMContext)
+@@ -593,6 +623,13 @@
+       if (n == 1 || (n & 1023) == 0)
+          TR_LOG("Present dropped #%ld (kmalloc=0x%x %ux%u)",
+                 n, src->hKMAllocation, src->Width, src->Height);
++#ifdef ASTRA_GPU_TRACE
++      metadata.drop_mask = (!pD->hKMContext ? ASTRA_PRESENT_DROP_NO_KERNEL_CONTEXT : 0) |
++                           (!pD->pfnPresentCb ? ASTRA_PRESENT_DROP_NO_CALLBACK : 0) |
++                           (!src->hKMAllocation ? ASTRA_PRESENT_DROP_NO_ALLOCATION : 0);
++      metadata.result_hr = S_OK;
++      astra_gpu_trace_present(&metadata);
++#endif
+       InterlockedDecrement(&pD->presentInFlight);
+       return S_OK;
+    }
+@@ -620,6 +657,11 @@
+    cb.pDXGIContext   = pArgs->pDXGIContext;
+    cb.hContext       = pD->hKMContext;
+    HRESULT hr = tritonPresentSubmitCb(pD, &cb);
++#ifdef ASTRA_GPU_TRACE
++   metadata.submitted = 1; /* Callback invoked; does not mean displayed. */
++   metadata.result_hr = hr;
++   astra_gpu_trace_present(&metadata);
++#endif
+    InterlockedDecrement(&pD->presentInFlight);
+    return hr;
+ }
+@@ -1239,6 +1281,10 @@
+    PTRITON_RESOURCE dst = (PTRITON_RESOURCE)(uintptr_t)pArgs->hDstResource;
+    if (!src) return E_INVALIDARG;
+    InterlockedIncrement(&pD->presentInFlight);   /* see tritonDxgiPresent */
++#ifdef ASTRA_GPU_TRACE
++   struct astra_present_metadata metadata =
++      tritonPresentMetadata(src, dst, ASTRA_PRESENT_METHOD_PRESENT1);
++#endif
+    if (!pD->hKMContext)
+       tritonPresentEnsureKernelContext(pD);
+    if (!pD->hKMContext || !pD->pfnPresentCb || !src->hKMAllocation) {
+@@ -1247,6 +1293,13 @@
+       if (n == 1 || (n & 1023) == 0)
+          TR_LOG("Present1 dropped #%ld (kmalloc=0x%x %ux%u)",
+                 n, src->hKMAllocation, src->Width, src->Height);
++#ifdef ASTRA_GPU_TRACE
++      metadata.drop_mask = (!pD->hKMContext ? ASTRA_PRESENT_DROP_NO_KERNEL_CONTEXT : 0) |
++                           (!pD->pfnPresentCb ? ASTRA_PRESENT_DROP_NO_CALLBACK : 0) |
++                           (!src->hKMAllocation ? ASTRA_PRESENT_DROP_NO_ALLOCATION : 0);
++      metadata.result_hr = S_OK;
++      astra_gpu_trace_present(&metadata);
++#endif
+       InterlockedDecrement(&pD->presentInFlight);
+       return S_OK;
+    }
+@@ -1263,6 +1316,11 @@
+    cb.pDXGIContext   = pArgs->pDXGIContext;
+    cb.hContext       = pD->hKMContext;
+    HRESULT hr = tritonPresentSubmitCb(pD, &cb);
++#ifdef ASTRA_GPU_TRACE
++   metadata.submitted = 1;
++   metadata.result_hr = hr;
++   astra_gpu_trace_present(&metadata);
++#endif
+    InterlockedDecrement(&pD->presentInFlight);
+    return hr;
+ }
+diff --git a/src/virtio/neptune/triton/tritonResource.c b/src/virtio/neptune/triton/tritonResource.c
+index b13eb80964fd66266b3f22ac36efa10c97e4e129..5aa9d0df3f61e5ce4a987819441c69b098f69e78 100644
+--- a/src/virtio/neptune/triton/tritonResource.c
++++ b/src/virtio/neptune/triton/tritonResource.c
+@@ -11,6 +11,7 @@
+ #include "triton_log.h"
+ #include "tritonPresent.h"
+ #include "tritonSharedBridge.h"
++#include "../astra_gpu_trace.h"
+ #include "npt_shared_texture.h"          /* shared format + export helpers */
+ 
+ #include "virtio/virtio-gpu/wddm_hw.h"   /* VIOGPU resource / shared-allocation ABI */
+@@ -223,6 +224,140 @@
+     return TRUE;
+ }
+ 
++/* Metadata-only original-DDI checkpoint. All fields are copied before the
++ * resource wrapper, descriptor conversion, or initial-data allocation changes
++ * anything. The sole indexed read is guarded mip-0 descriptor metadata. */
++static void
++tritonBc6DdiCaptureRaw(struct astra_bc6_ddi_desc_snapshot *snapshot,
++                       const D3D11DDIARG_CREATERESOURCE *args)
++{
++    DWORD saved_error = GetLastError();
++    if (!astra_gpu_trace_bc6_ddi_desc_allowed() || !args ||
++        args->Format != 95 || args->MipLevels != 8 ||
++        args->SampleDesc.Count != 1 ||
++        (args->ResourceDimension != D3D10DDIRESOURCE_TEXTURE2D &&
++         args->ResourceDimension != D3D10DDIRESOURCE_TEXTURECUBE) ||
++        !args->pMipInfoList || !args->MipLevels ||
++        args->pMipInfoList[0].TexelWidth != 128 ||
++        args->pMipInfoList[0].TexelHeight != 128)
++        goto done;
++
++    struct astra_bc6_ddi_raw_desc *raw = &snapshot->raw;
++    raw->dimension = (uint32_t)args->ResourceDimension;
++    raw->format = (uint32_t)args->Format;
++    raw->usage = (uint32_t)args->Usage;
++    raw->map_flags = args->MapFlags;
++    raw->mip_levels = args->MipLevels;
++    raw->array_size = args->ArraySize;
++    raw->sample_count = args->SampleDesc.Count;
++    raw->sample_quality = args->SampleDesc.Quality;
++    raw->byte_stride = args->ByteStride;
++    raw->bind_flags = args->BindFlags;
++    raw->misc_flags = args->MiscFlags;
++    raw->initial_data_present = args->pInitialDataUP != NULL;
++    raw->mip_info_present = args->pMipInfoList != NULL;
++    raw->primary_desc_present = args->pPrimaryDesc != NULL;
++    raw->texel_width = args->pMipInfoList[0].TexelWidth;
++    raw->texel_height = args->pMipInfoList[0].TexelHeight;
++    raw->texel_depth = args->pMipInfoList[0].TexelDepth;
++    raw->physical_width = args->pMipInfoList[0].PhysicalWidth;
++    raw->physical_height = args->pMipInfoList[0].PhysicalHeight;
++    raw->physical_depth = args->pMipInfoList[0].PhysicalDepth;
++    astra_gpu_trace_bc6_ddi_desc_begin(snapshot);
++done:
++    SetLastError(saved_error);
++}
++
++static void
++tritonBc6DdiCaptureConverted(struct astra_bc6_ddi_desc_snapshot *snapshot,
++                             const D3D11_TEXTURE2D_DESC *desc,
++                             UINT initial_data_present)
++{
++    DWORD saved_error = GetLastError();
++    if (!snapshot->admitted) goto done;
++    struct astra_bc6_ddi_converted_desc *converted = &snapshot->converted;
++    converted->width = desc->Width;
++    converted->height = desc->Height;
++    converted->mip_levels = desc->MipLevels;
++    converted->array_size = desc->ArraySize;
++    converted->format = (uint32_t)desc->Format;
++    converted->sample_count = desc->SampleDesc.Count;
++    converted->sample_quality = desc->SampleDesc.Quality;
++    converted->usage = (uint32_t)desc->Usage;
++    converted->bind_flags = desc->BindFlags;
++    converted->cpu_access_flags = desc->CPUAccessFlags;
++    converted->misc_flags = desc->MiscFlags;
++    converted->initial_data_present = initial_data_present != 0;
++    snapshot->converted_valid = 1;
++done:
++    SetLastError(saved_error);
++}
++
++static void
++tritonBc6DdiFinish(const struct astra_bc6_ddi_desc_snapshot *snapshot,
++                  ID3D11Resource *resource)
++{
++    DWORD saved_error = GetLastError();
++    uint32_t ctx = 0;
++    uint64_t resource_id = 0;
++    if (snapshot->admitted && snapshot->converted_valid &&
++        astra_gpu_trace_bc6_ddi_resource_identity(resource, &ctx, &resource_id))
++        astra_gpu_trace_bc6_ddi_desc_emit(snapshot, ctx, resource_id);
++    SetLastError(saved_error);
++}
++
++/* Borrow only the declared ordinary 48-UP initialization array, before
++ * Triton copies or converts anything. ArraySize zero is never expanded here.
++ * Readable descriptor/payload lifetime is the normal DDI caller contract. */
++static void
++tritonBc6DdiCaptureSource(struct astra_bc6_ddi_source_snapshot *snapshot,
++                          const D3D11DDIARG_CREATERESOURCE *args)
++{
++    DWORD saved_error = GetLastError();
++    if (!astra_gpu_trace_bc6_ddi_desc_allowed() || !args ||
++        (args->ResourceDimension != D3D10DDIRESOURCE_TEXTURE2D &&
++         args->ResourceDimension != D3D10DDIRESOURCE_TEXTURECUBE) ||
++        args->Format != 95 || args->MipLevels != 8 || args->ArraySize != 6 ||
++        args->Usage != D3D10_DDI_USAGE_DEFAULT || args->SampleDesc.Count != 1 ||
++        args->SampleDesc.Quality != 0 || !args->pMipInfoList || !args->pInitialDataUP ||
++        args->pPrimaryDesc || (args->BindFlags & D3D10_DDI_BIND_PRESENT) ||
++        (args->MiscFlags & D3D10_DDI_RESOURCE_MISC_SHARED) ||
++        args->pMipInfoList[0].TexelWidth != 128 ||
++        args->pMipInfoList[0].TexelHeight != 128 ||
++        args->pMipInfoList[0].TexelDepth != 1)
++        goto done;
++    const uint64_t count = (uint64_t)args->MipLevels * args->ArraySize;
++    const uint64_t descriptor_bytes = count * sizeof(*args->pInitialDataUP);
++    if (count != ASTRA_BC6_DDI_SOURCE_SUBRESOURCES || !descriptor_bytes ||
++        descriptor_bytes > UINTPTR_MAX ||
++        (uintptr_t)args->pInitialDataUP > UINTPTR_MAX - (descriptor_bytes - 1u) ||
++        !astra_gpu_trace_bc6_ddi_source_begin(snapshot))
++        goto done;
++    for (uint32_t sub = 0; sub < ASTRA_BC6_DDI_SOURCE_SUBRESOURCES; ++sub) {
++        const D3D10_DDIARG_SUBRESOURCE_UP *data = &args->pInitialDataUP[sub];
++        /* SysMemSlicePitch does not define the readable extent of a 2D mip. */
++        if (!astra_gpu_trace_bc6_ddi_source_hash(snapshot, sub, data->SysMemPitch,
++                                                data->pSysMem))
++            break;
++    }
++    astra_gpu_trace_bc6_ddi_source_end(snapshot);
++done:
++    SetLastError(saved_error);
++}
++
++static void
++tritonBc6DdiSourceFinish(const struct astra_bc6_ddi_source_snapshot *snapshot,
++                        ID3D11Resource *resource)
++{
++    DWORD saved_error = GetLastError();
++    uint32_t ctx = 0;
++    uint64_t resource_id = 0;
++    if (snapshot->complete &&
++        astra_gpu_trace_bc6_ddi_resource_identity(resource, &ctx, &resource_id))
++        astra_gpu_trace_bc6_ddi_source_emit(snapshot, ctx, resource_id);
++    SetLastError(saved_error);
++}
++
+ void APIENTRY
+ tritonCreateResource(D3D10DDI_HDEVICE hDevice,
+                      const D3D11DDIARG_CREATERESOURCE *pArgs,
+@@ -235,6 +370,11 @@
+         TR_LOG("CreateResource: missing pDrvPrivate");
+         return;
+     }
++
++    struct astra_bc6_ddi_desc_snapshot ddi_desc = {};
++    tritonBc6DdiCaptureRaw(&ddi_desc, pArgs);
++    struct astra_bc6_ddi_source_snapshot ddi_source = {};
++    tritonBc6DdiCaptureSource(&ddi_source, pArgs);
+ 
+     r->hRTResource = hRTResource;
+     r->Format      = pArgs->Format;
+@@ -372,6 +512,7 @@
+         d.CPUAccessFlags   = cpuAccess;
+         d.MiscFlags        = misc;
+         ID3D11Texture2D *tex = NULL;
++        tritonBc6DdiCaptureConverted(&ddi_desc, &d, initData != NULL);
+         hr = ID3D11Device1_CreateTexture2D(pD->pDev1, &d, initData, &tex);
+         if (SUCCEEDED(hr) && tex)
+             r->pResource = (ID3D11Resource *)tex;
+@@ -389,6 +530,9 @@
+         d.StructureByteStride = r->ByteStride;
+         ID3D11Buffer *buf = NULL;
+         hr = ID3D11Device1_CreateBuffer(pD->pDev1, &d, initData, &buf);
++        if(FAILED(hr)) astra_gpu_tracef("buffer_create_failure",
++            "hr=0x%08lx bytes=%u usage=%u bind=0x%x cpu=0x%x misc=0x%x stride=%u initial_data=%u",
++            hr,d.ByteWidth,d.Usage,d.BindFlags,d.CPUAccessFlags,d.MiscFlags,d.StructureByteStride,initData!=NULL);
+         if (SUCCEEDED(hr) && buf)
+             r->pResource = (ID3D11Resource *)buf;
+         break;
+@@ -438,6 +582,7 @@
+         d.CPUAccessFlags   = cpuAccess;
+         d.MiscFlags        = misc | D3D11_RESOURCE_MISC_TEXTURECUBE;
+         ID3D11Texture2D *tex = NULL;
++        tritonBc6DdiCaptureConverted(&ddi_desc, &d, initData != NULL);
+         hr = ID3D11Device1_CreateTexture2D(pD->pDev1, &d, initData, &tex);
+         if (SUCCEEDED(hr) && tex) r->pResource = (ID3D11Resource *)tex;
+         break;
+@@ -455,6 +600,9 @@
+         tritonSetError(pD, FAILED(hr) ? hr : E_OUTOFMEMORY);
+         return;
+     }
++
++    tritonBc6DdiFinish(&ddi_desc, r->pResource);
++    tritonBc6DdiSourceFinish(&ddi_source, r->pResource);
+ 
+     if (isShared) {
+         if (!tritonRegisterSharedBlob(pD, r, (UINT)usage, bind, cpuAccess,
+@@ -734,13 +882,19 @@
+         return TRUE;
+ 
+     D3D11_MAPPED_SUBRESOURCE m = {};
++    astra_gpu_trace_map_probe_begin();
+     HRESULT hr = ID3D11DeviceContext1_Map(pD->pCtx1, r->pResource, 0,
+                                           mapType, D3D11_MAP_FLAG_DO_NOT_WAIT, &m);
+-    if (hr == DXGI_ERROR_WAS_STILL_DRAWING) return TRUE;
++    if (hr == DXGI_ERROR_WAS_STILL_DRAWING) {
++        astra_gpu_trace_map_probe_end();
++        return TRUE;
++    }
+     if (SUCCEEDED(hr)) {
+         ID3D11DeviceContext1_Unmap(pD->pCtx1, r->pResource, 0);
++        astra_gpu_trace_map_probe_end();
+         return FALSE;
+     }
++    astra_gpu_trace_map_probe_end();
+     return TRUE;
+ }
+ 
+diff --git a/src/virtio/neptune/triton/tritonShader.c b/src/virtio/neptune/triton/tritonShader.c
+index e327737d4d937a19f84960fe88e66fba8079bac2..a86608a71aa120e90a819854cc978b0d60c90b8a 100644
+--- a/src/virtio/neptune/triton/tritonShader.c
++++ b/src/virtio/neptune/triton/tritonShader.c
+@@ -41,6 +41,17 @@
+ {
+     return (SIZE_T)pShaderCode[1] * sizeof(UINT);
+ }
++
++/* Windows represents VS/DS stream output as a declaration-only GS object.
++ * Keep the DDI declaration until its producer is bound; the host API instead
++ * needs the producer's DXBC and semantic names. Never fabricate shader code. */
++typedef struct TRITON_SO_ALIAS {
++    UINT NumEntries, NumStrides, RasterizedStream;
++    UINT Strides[D3D11_SO_BUFFER_SLOT_COUNT];
++    UINT64 ProducerCookie;
++    D3D11DDIARG_STREAM_OUTPUT_DECLARATION_ENTRY Entries[];
++} TRITON_SO_ALIAS;
++
+ 
+ /* Choose the DDI signature-entry stride based on interface version: 10.0
+  * and 11.0 tables pass D3D10DDIARG_SIGNATURE_ENTRY (12 B); the 11.1 table
+@@ -137,7 +148,8 @@
+     s->pBytecode      = NULL;
+     s->cbBytecode     = 0;
+     s->u.pDeviceChild = NULL;
+-    s->cookie         = ++pD->nextShaderCookie;
++    s->pSOAlias       = NULL;
++    s->cookie         = (UINT64)InterlockedIncrement64((volatile LONG64 *)&pD->nextShaderCookie);
+ 
+     const SIZE_T cbTokens = tritonShaderTokenBytes(pShaderCode);
+     /* Compute shaders have no input/output signature; HS/DS carry an
+@@ -230,8 +242,14 @@
+     PTRITON_SHADER s = (PTRITON_SHADER)(hShader.pDrvPrivate);
+     if (!s) return;
+     if (pD && pD->pCurrentVS == s) pD->pCurrentVS = NULL;
++    if (pD && pD->pCurrentDS == s) pD->pCurrentDS = NULL;
++    if (pD && pD->pCurrentGS == s) {
++        pD->pCurrentGS = NULL;
++        ID3D11DeviceContext1_GSSetShader(pD->pCtx1, NULL, NULL, 0);
++    }
+     if (s->u.pDeviceChild) { ID3D11DeviceChild_Release(s->u.pDeviceChild); s->u.pDeviceChild = NULL; }
+     if (s->pBytecode)      { HeapFree(GetProcessHeap(), 0, s->pBytecode);  s->pBytecode = NULL; }
++    if (s->pSOAlias)       { HeapFree(GetProcessHeap(), 0, s->pSOAlias);   s->pSOAlias = NULL; }
+     s->cbBytecode = 0;
+ }
+ 
+@@ -264,6 +282,13 @@
+     PTRITON_DEVICE pD = (PTRITON_DEVICE)(hDevice.pDrvPrivate);
+     PTRITON_SHADER s  = (PTRITON_SHADER)(hShader.pDrvPrivate);
+     if (!pD) return;
++    pD->pCurrentGS = s;
++    if (s && s->pSOAlias) {
++        /* Bind calls may temporarily describe an incompatible pipeline.
++         * Wait for Draw before choosing the producer and validating SO. */
++        ID3D11DeviceContext1_GSSetShader(pD->pCtx1, NULL, NULL, 0);
++        return;
++    }
+     ID3D11DeviceContext1_GSSetShader(pD->pCtx1,
+         (s && s->u.pGS) ? s->u.pGS : NULL, NULL, 0);
+ }
+@@ -286,6 +311,7 @@
+     if (!pD) return;
+     ID3D11DeviceContext1_DSSetShader(pD->pCtx1,
+         (s && s->u.pDS) ? s->u.pDS : NULL, NULL, 0);
++    pD->pCurrentDS = s;
+ }
+ 
+ void APIENTRY
+@@ -448,6 +474,78 @@
+     return fallback;
+ }
+ 
++BOOL tritonResolveStreamOutput(PTRITON_DEVICE pD)
++{
++    PTRITON_SHADER gs = pD ? pD->pCurrentGS : NULL;
++    TRITON_SO_ALIAS *alias = gs ? gs->pSOAlias : NULL;
++    if (!alias) return TRUE;
++    PTRITON_SHADER producer = pD->pCurrentDS ? pD->pCurrentDS : pD->pCurrentVS;
++    if (!producer || !producer->pBytecode || !producer->u.pDeviceChild) {
++        /* GS can be set before VS. Delay without poisoning the device. */
++        ID3D11DeviceContext1_GSSetShader(pD->pCtx1, NULL, NULL, 0);
++        return TRUE;
++    }
++    if (gs->u.pGS && alias->ProducerCookie == producer->cookie) {
++        ID3D11DeviceContext1_GSSetShader(pD->pCtx1, gs->u.pGS, NULL, 0);
++        return TRUE;
++    }
++
++    TritonDxbcSig signatures[128];
++    UINT sigCount = tritonDxbcParseSig(producer->pBytecode, producer->cbBytecode,
++        FALSE, signatures, sizeof(signatures)/sizeof(signatures[0]));
++    const UINT cap = D3D11_SO_STREAM_COUNT * D3D11_SO_OUTPUT_COMPONENT_COUNT;
++    D3D11_SO_DECLARATION_ENTRY *entries = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
++        cap * sizeof(*entries));
++    HRESULT hr = entries ? S_OK : E_OUTOFMEMORY;
++    UINT count = 0;
++    ID3D11GeometryShader *native = NULL;
++    for (UINT i=0; SUCCEEDED(hr) && i<alias->NumEntries; i++) {
++        const D3D11DDIARG_STREAM_OUTPUT_DECLARATION_ENTRY *src = &alias->Entries[i];
++        UINT mask = src->RegisterMask & 15u;
++        if (!mask || src->RegisterMask != mask || src->OutputSlot >= D3D11_SO_BUFFER_SLOT_COUNT ||
++            src->Stream >= D3D11_SO_STREAM_COUNT) {hr=E_INVALIDARG;break;}
++        while (mask) {
++            if (count >= cap) {hr=E_INVALIDARG;break;}
++            UINT start=0;while (!(mask & (1u<<start))) start++;
++            D3D11_SO_DECLARATION_ENTRY *dst=&entries[count];
++            dst->Stream=src->Stream;dst->OutputSlot=(BYTE)src->OutputSlot;
++            if (src->RegisterIndex == ~0u) {
++                /* The runtime breaks large API gaps into register-sized DDI gaps. */
++                UINT n=0;for(UINT bits=mask;bits;bits>>=1)n+=bits&1u;
++                dst->ComponentCount=(BYTE)n;mask=0;count++;continue;
++            }
++            const TritonDxbcSig *sig=tritonDxbcFindSig(signatures,sigCount,
++                src->Stream,src->RegisterIndex,start);
++            if (!sig || !sig->Name[0] || !(sig->Mask & (1u<<start))) {hr=E_INVALIDARG;break;}
++            UINT base=0;while(base<4 && !(sig->Mask & (1u<<base)))base++;
++            UINT n=0;
++            while(start+n<4 && (mask & (1u<<(start+n))) && (sig->Mask & (1u<<(start+n))))n++;
++            dst->SemanticName=sig->Name;dst->SemanticIndex=sig->SemanticIndex;
++            dst->StartComponent=(BYTE)(start-base);dst->ComponentCount=(BYTE)n;
++            mask &= ~(((1u<<n)-1u)<<start);count++;
++        }
++    }
++    if (SUCCEEDED(hr)) {
++        hr=ID3D11Device1_CreateGeometryShaderWithStreamOutput(pD->pDev1,
++            producer->pBytecode,producer->cbBytecode,entries,count,
++            alias->NumStrides ? alias->Strides : NULL,alias->NumStrides,
++            alias->RasterizedStream,NULL,&native);
++        if (SUCCEEDED(hr) && !native) hr=E_FAIL;
++    }
++    if(entries)HeapFree(GetProcessHeap(),0,entries);
++    if(FAILED(hr)) {
++        if(native)ID3D11GeometryShader_Release(native);
++        ID3D11DeviceContext1_GSSetShader(pD->pCtx1,NULL,NULL,0);
++        TR_LOG("ResolveSOAlias: failed hr=0x%08lx entries=%u strides=%u raster=%u producer=%u",
++            hr,alias->NumEntries,alias->NumStrides,alias->RasterizedStream,producer->kind);
++        tritonSetError(pD,hr);return FALSE;
++    }
++    if(gs->u.pGS)ID3D11GeometryShader_Release(gs->u.pGS);
++    gs->u.pGS=native;alias->ProducerCookie=producer->cookie;
++    ID3D11DeviceContext1_GSSetShader(pD->pCtx1,native,NULL,0);
++    return TRUE;
++}
++
+ /* Two flavors of the GS-with-SO create struct:
+  *   10.0/10.1: D3D10DDIARG_CREATEGEOMETRYSHADERWITHSTREAMOUTPUT — no
+  *     per-entry Stream, single StreamOutputStrideInBytes.
+@@ -474,13 +572,30 @@
+     s->pBytecode      = NULL;
+     s->cbBytecode     = 0;
+     s->u.pDeviceChild = NULL;
+-    s->cookie         = ++pD->nextShaderCookie;
+-    /* ID3D11Device1::CreateGeometryShaderWithStreamOutput mandates
+-     * non-NULL bytecode; SO-alias shaders (no bytecode, decls only) have
+-     * no equivalent. */
++    s->pSOAlias       = NULL;
++    s->cookie         = (UINT64)InterlockedIncrement64((volatile LONG64 *)&pD->nextShaderCookie);
++    if (!pArgs || pArgs->NumEntries > D3D11_SO_STREAM_COUNT * D3D11_SO_OUTPUT_COMPONENT_COUNT ||
++        pArgs->NumStrides > D3D11_SO_BUFFER_SLOT_COUNT ||
++        (pArgs->NumEntries && !pArgs->pOutputStreamDecl) ||
++        (pArgs->NumStrides && !pArgs->BufferStridesInBytes)) {
++        tritonSetError(pD,E_INVALIDARG);return;
++    }
+     if (!pArgs->pShaderCode) {
+-        TR_LOG("CreateGSWithSO: NULL pShaderCode (SO-alias shader unsupported)");
+-        tritonSetError(pD, E_NOTIMPL);
++        SIZE_T bytes=sizeof(TRITON_SO_ALIAS)+(SIZE_T)pArgs->NumEntries*sizeof(D3D11DDIARG_STREAM_OUTPUT_DECLARATION_ENTRY);
++        TRITON_SO_ALIAS *alias=HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,bytes);
++        if(!alias){tritonSetError(pD,E_OUTOFMEMORY);return;}
++        alias->NumEntries=pArgs->NumEntries;alias->NumStrides=pArgs->NumStrides;
++        alias->RasterizedStream=pArgs->RasterizedStream;
++        if(pArgs->NumEntries)memcpy(alias->Entries,pArgs->pOutputStreamDecl,
++            pArgs->NumEntries*sizeof(alias->Entries[0]));
++        if(pArgs->NumStrides)memcpy(alias->Strides,pArgs->BufferStridesInBytes,
++            pArgs->NumStrides*sizeof(UINT));
++        s->pSOAlias=alias;
++#ifdef ASTRA_GPU_TRACE
++        static LONG traced;
++        if(InterlockedIncrement(&traced)<=4)astra_gpu_tracef("so_alias_created",
++            "entries=%u strides=%u rasterized_stream=%u",alias->NumEntries,alias->NumStrides,alias->RasterizedStream);
++#endif
+         return;
+     }
+     if (pArgs->NumEntries > D3D11_SO_STREAM_COUNT * D3D11_SO_OUTPUT_COMPONENT_COUNT) {
+@@ -660,6 +775,23 @@
+         NULL, 0);
+ }
+ 
++/* Observe final draw state without parsing bytecode in the draw hot path. */
++void tritonTraceInputLayoutDraw(PTRITON_DEVICE pD, const char *site)
++{
++    PTRITON_ELEMENTLAYOUT e = pD ? pD->pCurrentLayout : NULL;
++    PTRITON_SHADER vs = pD ? pD->pCurrentVS : NULL;
++    if (!e || !vs || !e->pElements || !e->NumElements || e->AstraDrawTraced ||
++        e->AstraResolvedCookie != vs->cookie || e->AstraMatchedInputs ||
++        !e->AstraSignatureInputs) return;
++    e->AstraDrawTraced = TRUE;
++    static volatile LONG records;
++    if (InterlockedIncrement(&records) > 16) return;
++    astra_gpu_tracef("input_layout_unmatched_draw",
++        "site=%s vs_cookie=%llu elements=%u input_reg0=%u format0=%u signature_entries=%u",
++        site, vs->cookie, e->NumElements, e->pElements[0].InputRegister,
++        (UINT)e->pElements[0].Format, e->AstraSignatureInputs);
++}
++
+ void tritonResolveInputLayout(PTRITON_DEVICE pD)
+ {
+     if (!pD) return;
+@@ -689,10 +821,15 @@
+         e->pReconVS = NULL;
+     }
+ 
++    e->AstraResolvedCookie = vs->cookie;
++    e->AstraMatchedInputs = e->AstraSignatureInputs = 0;
++    e->AstraDrawTraced = FALSE;
++
+     TritonDxbcSig sigs[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT * 2];
+     const UINT cSigs = tritonDxbcParseSig(vs->pBytecode, vs->cbBytecode,
+                                           TRUE, sigs,
+                                           sizeof(sigs) / sizeof(sigs[0]));
++    e->AstraSignatureInputs = cSigs;
+     if (cSigs == 0) {
+         TR_LOG("ResolveInputLayout: VS has no ISGN/ISG1 chunk");
+         tritonUnbindReconVs(pD);
+@@ -738,6 +875,16 @@
+             sigRegs[cMatched]   = src->InputRegister;
+             ++cMatched;
+         }
++    }
++
++    e->AstraMatchedInputs = cMatched;
++    if (!cMatched) {
++        static volatile LONG records;
++        if (InterlockedIncrement(&records) <= 16)
++            astra_gpu_tracef("input_layout_unmatched_resolve",
++                "vs_cookie=%llu elements=%u input_reg0=%u format0=%u signature_entries=%u signature_reg0=%u",
++                vs->cookie, e->NumElements, e->pElements[0].InputRegister,
++                (UINT)e->pElements[0].Format, cSigs, sigs[0].Register);
+     }
+ 
+     /* The vertex formats are only known here, so derive the component type per
+diff --git a/src/virtio/neptune/triton/tritonSharedBridge.c b/src/virtio/neptune/triton/tritonSharedBridge.c
+index a432261c85923f95d59c959b431fb26f398fccc4..603d7181b47c051b4c4d90237cb04e2b0b2e4e71 100644
+--- a/src/virtio/neptune/triton/tritonSharedBridge.c
++++ b/src/virtio/neptune/triton/tritonSharedBridge.c
+@@ -53,6 +53,22 @@
+    npt_env_init();
+    out->no_wddm2_ddi = NPT_DEBUG(NO_WDDM2_DDI);
+    out->wddm2_0_only = NPT_DEBUG(WDDM2_0_ONLY);
++}
++
++bool
++tritonSharedBridgeObjectIdentity(void *wrapper, uint32_t *context_id,
++                                 uint64_t *object_id)
++{
++   if (context_id) *context_id = 0;
++   if (object_id) *object_id = 0;
++   if (!wrapper || !context_id || !object_id)
++      return false;
++   struct npt_device *dev = npt_com_self_device(wrapper);
++   if (!dev || !dev->renderer)
++      return false;
++   *context_id = dev->renderer->info.virtio_ctx_id;
++   *object_id = npt_com_self_id(wrapper);
++   return *context_id != 0 && *object_id != 0;
+ }
+ 
+ bool
+diff --git a/src/virtio/neptune/triton/tritonSharedBridge.h b/src/virtio/neptune/triton/tritonSharedBridge.h
+index 3332973f963001ac5de57fe3088f2ea86d6ff0e2..ed7d049ca6dcbc6df1127c27d21628246e22061c 100644
+--- a/src/virtio/neptune/triton/tritonSharedBridge.h
++++ b/src/virtio/neptune/triton/tritonSharedBridge.h
+@@ -52,6 +52,11 @@
+ };
+ 
+ void tritonSharedBridgeAdapterProbe(struct triton_adapter_probe *out);
++
++/* Read the proxy's transport identity without COM calls or ring activity.
++ * For creator resources the object id is also the exported blob id. */
++bool tritonSharedBridgeObjectIdentity(void *wrapper, uint32_t *context_id,
++                                     uint64_t *object_id);
+ 
+ /* Wire-neutral texture description; Triton converts to/from the WDDM
+  * private-data struct (VIOGPU_RESOURCE_SHARED_TEXTURE_OPTIONS). */
+diff --git a/src/virtio/neptune/triton/tritonState.c b/src/virtio/neptune/triton/tritonState.c
+index 3a28e93876aa477068378424ebd153f163d718bd..3f47226cee83ade344ba9268a6edfc686a7c0eed 100644
+--- a/src/virtio/neptune/triton/tritonState.c
++++ b/src/virtio/neptune/triton/tritonState.c
+@@ -478,6 +478,9 @@
+     e->NumElements     = pArgs->NumElements;
+     e->pLayout         = NULL;
+     e->LayoutVsCookie  = 0;
++    e->AstraResolvedCookie = 0;
++    e->AstraMatchedInputs = e->AstraSignatureInputs = 0;
++    e->AstraDrawTraced = FALSE;
+     e->pReconVS        = NULL;
+     /* The runtime may free pArgs->pVertexElements after this returns. */
+     const SIZE_T cb = pArgs->NumElements * sizeof(D3D10DDIARG_INPUT_ELEMENT_DESC);
+@@ -621,6 +624,8 @@
+ {
+     PTRITON_DEVICE pD = (PTRITON_DEVICE)(hDevice.pDrvPrivate);
+     if (!pD) return;
++    tritonTraceInputLayoutDraw(pD, __func__);
++    if (!tritonResolveStreamOutput(pD)) return;
+     ID3D11DeviceContext1_Draw(pD->pCtx1, VertexCount, StartVertexLocation);
+ }
+ 
+@@ -630,6 +635,8 @@
+ {
+     PTRITON_DEVICE pD = (PTRITON_DEVICE)(hDevice.pDrvPrivate);
+     if (!pD) return;
++    tritonTraceInputLayoutDraw(pD, __func__);
++    if (!tritonResolveStreamOutput(pD)) return;
+     ID3D11DeviceContext1_DrawIndexed(pD->pCtx1, IndexCount, StartIndexLocation, BaseVertexLocation);
+ }
+ 
+@@ -640,6 +647,8 @@
+ {
+     PTRITON_DEVICE pD = (PTRITON_DEVICE)(hDevice.pDrvPrivate);
+     if (!pD) return;
++    tritonTraceInputLayoutDraw(pD, __func__);
++    if (!tritonResolveStreamOutput(pD)) return;
+     ID3D11DeviceContext1_DrawInstanced(pD->pCtx1, VertexCountPerInstance, InstanceCount,
+                                        StartVertexLocation, StartInstanceLocation);
+ }
+@@ -651,6 +660,8 @@
+ {
+     PTRITON_DEVICE pD = (PTRITON_DEVICE)(hDevice.pDrvPrivate);
+     if (!pD) return;
++    tritonTraceInputLayoutDraw(pD, __func__);
++    if (!tritonResolveStreamOutput(pD)) return;
+     ID3D11DeviceContext1_DrawIndexedInstanced(pD->pCtx1, IndexCountPerInstance, InstanceCount,
+                                               StartIndexLocation, BaseVertexLocation,
+                                               StartInstanceLocation);
+@@ -661,6 +672,8 @@
+ {
+     PTRITON_DEVICE pD = (PTRITON_DEVICE)(hDevice.pDrvPrivate);
+     if (!pD) return;
++    tritonTraceInputLayoutDraw(pD, __func__);
++    if (!tritonResolveStreamOutput(pD)) return;
+     ID3D11DeviceContext1_DrawAuto(pD->pCtx1);
+ }
+ 
+@@ -671,6 +684,8 @@
+     PTRITON_DEVICE   pD = (PTRITON_DEVICE)(hDevice.pDrvPrivate);
+     PTRITON_RESOURCE r  = (PTRITON_RESOURCE)(hBuf.pDrvPrivate);
+     if (!pD || !r || !r->pResource) return;
++    tritonTraceInputLayoutDraw(pD, __func__);
++    if (!tritonResolveStreamOutput(pD)) return;
+     ID3D11DeviceContext1_DrawInstancedIndirect(
+         pD->pCtx1, (ID3D11Buffer *)r->pResource, Offset);
+ }
+@@ -682,6 +697,8 @@
+     PTRITON_DEVICE   pD = (PTRITON_DEVICE)(hDevice.pDrvPrivate);
+     PTRITON_RESOURCE r  = (PTRITON_RESOURCE)(hBuf.pDrvPrivate);
+     if (!pD || !r || !r->pResource) return;
++    tritonTraceInputLayoutDraw(pD, __func__);
++    if (!tritonResolveStreamOutput(pD)) return;
+     ID3D11DeviceContext1_DrawIndexedInstancedIndirect(
+         pD->pCtx1, (ID3D11Buffer *)r->pResource, Offset);
+ }
+diff --git a/src/virtio/neptune/triton/triton_log.h b/src/virtio/neptune/triton/triton_log.h
+index 33d4cfa0603d9693dae78e442b2a3eeb43f186a5..76801f96a49adcbe4e25243d2578438c00488527 100644
+--- a/src/virtio/neptune/triton/triton_log.h
++++ b/src/virtio/neptune/triton/triton_log.h
+@@ -13,6 +13,9 @@
+ 
+ #include <windows.h>
+ #include <stdio.h>
++#ifdef ASTRA_GPU_TRACE
++#include "../astra_gpu_trace.h"
++#endif
+ 
+ #ifdef __cplusplus
+ extern "C" {
+@@ -21,6 +24,9 @@
+ static inline void triton_log_raw(const char *line)
+ {
+     OutputDebugStringA(line);
++#ifdef ASTRA_GPU_TRACE
++    astra_gpu_trace_filtered("triton",line);
++#endif
+ }
+ 
+ #define TR_LOG(fmt, ...) do {                                         \

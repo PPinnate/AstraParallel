@@ -1,0 +1,700 @@
+{
+  "schema": 1,
+  "components": {
+    "dxmt": {
+      "repository": "https://github.com/utmapp/dxmt",
+      "revision": "bcdcf6da89af6c9fedeb2fc92b4367b23d5d6ed6",
+      "archive_url": "https://github.com/utmapp/dxmt/archive/bcdcf6da89af6c9fedeb2fc92b4367b23d5d6ed6.tar.gz",
+      "archive_name": "dxmt-bcdcf6da89af6c9fedeb2fc92b4367b23d5d6ed6.tar.gz",
+      "archive_root": "dxmt-bcdcf6da89af6c9fedeb2fc92b4367b23d5d6ed6",
+      "archive_sha256": "3f7022836696da7af96f31253484f358a0772009e84c13e565a3ee1c26075c13",
+      "baseline_patch": "patches/graphics/dxmt-baseline.patch",
+      "baseline_patch_sha256": "4be238e6e6cb8a0199dc2596ca4a94acc245ecce927f0f614d15af9563169e15",
+      "baseline_changed_paths": [
+        "include/native/directx/COPYING.MinGW-w64.txt",
+        "include/native/directx/README.md",
+        "include/native/directx/_mingw_unicode.h",
+        "include/native/directx/d3d.h",
+        "include/native/directx/d3d10.h",
+        "include/native/directx/d3d10_1.h",
+        "include/native/directx/d3d10_1shader.h",
+        "include/native/directx/d3d10effect.h",
+        "include/native/directx/d3d10misc.h",
+        "include/native/directx/d3d10sdklayers.h",
+        "include/native/directx/d3d10shader.h",
+        "include/native/directx/d3d11.h",
+        "include/native/directx/d3d11_1.h",
+        "include/native/directx/d3d11_2.h",
+        "include/native/directx/d3d11_3.h",
+        "include/native/directx/d3d11_4.h",
+        "include/native/directx/d3d11on12.h",
+        "include/native/directx/d3d11sdklayers.h",
+        "include/native/directx/d3d11shader.h",
+        "include/native/directx/d3d12.h",
+        "include/native/directx/d3d12sdklayers.h",
+        "include/native/directx/d3d12shader.h",
+        "include/native/directx/d3d8.h",
+        "include/native/directx/d3d8caps.h",
+        "include/native/directx/d3d8types.h",
+        "include/native/directx/d3d9.h",
+        "include/native/directx/d3d9caps.h",
+        "include/native/directx/d3d9types.h",
+        "include/native/directx/d3dcaps.h",
+        "include/native/directx/d3dcommon.h",
+        "include/native/directx/d3dcompiler.h",
+        "include/native/directx/d3dhal.h",
+        "include/native/directx/d3drm.h",
+        "include/native/directx/d3drmdef.h",
+        "include/native/directx/d3drmobj.h",
+        "include/native/directx/d3dtypes.h",
+        "include/native/directx/d3dvec.inl",
+        "include/native/directx/d3dx9.h",
+        "include/native/directx/d3dx9anim.h",
+        "include/native/directx/d3dx9core.h",
+        "include/native/directx/d3dx9effect.h",
+        "include/native/directx/d3dx9math.h",
+        "include/native/directx/d3dx9math.inl",
+        "include/native/directx/d3dx9mesh.h",
+        "include/native/directx/d3dx9shader.h",
+        "include/native/directx/d3dx9shape.h",
+        "include/native/directx/d3dx9tex.h",
+        "include/native/directx/d3dx9xof.h",
+        "include/native/directx/dxdiag.h",
+        "include/native/directx/dxerr8.h",
+        "include/native/directx/dxerr9.h",
+        "include/native/directx/dxfile.h",
+        "include/native/directx/dxgi.h",
+        "include/native/directx/dxgi1_2.h",
+        "include/native/directx/dxgi1_3.h",
+        "include/native/directx/dxgi1_4.h",
+        "include/native/directx/dxgi1_5.h",
+        "include/native/directx/dxgi1_6.h",
+        "include/native/directx/dxgicommon.h",
+        "include/native/directx/dxgidebug.h",
+        "include/native/directx/dxgiformat.h",
+        "include/native/directx/dxgitype.h",
+        "include/native/directx/dxtmpl.h",
+        "include/native/directx/dxva.h",
+        "include/native/directx/dxva2api.h",
+        "include/native/directx/dxvahd.h",
+        "src/airconv/airconv_public.h",
+        "src/airconv/dxbc_binding_sm50.cpp",
+        "src/airconv/dxbc_converter.cpp",
+        "src/airconv/dxbc_converter.hpp",
+        "src/airconv/dxbc_converter_basicblock.cpp",
+        "src/airconv/dxbc_signature.cpp",
+        "src/airconv/nt/dxbc_binding_map.hpp",
+        "src/airconv/nt/dxbc_converter_base.cpp",
+        "src/d3d11/d3d11_context_imm.cpp",
+        "src/d3d11/d3d11_context_impl.cpp",
+        "src/d3d11/d3d11_graph_trace.hpp",
+        "src/d3d11/d3d11_input_layout.cpp",
+        "src/d3d11/d3d11_pipeline.cpp",
+        "src/d3d11/d3d11_pipeline.hpp",
+        "src/d3d11/d3d11_resource.hpp",
+        "src/d3d11/d3d11_resource_view_helper.cpp",
+        "src/d3d11/d3d11_shader.cpp",
+        "src/d3d11/d3d11_shader.hpp",
+        "src/d3d11/d3d11_texture_device.cpp",
+        "src/d3d11/d3d11_texture_snapshot.hpp",
+        "src/dxmt-native/dxmt_native.cpp",
+        "src/dxmt-native/dxmt_native.exports",
+        "src/dxmt/dxmt_context.cpp",
+        "src/dxmt/dxmt_context.hpp",
+        "src/dxmt/dxmt_resource_initializer.cpp",
+        "src/dxmt/dxmt_resource_initializer.hpp"
+      ],
+      "development_patch": "patches/graphics/dxmt-development.patch",
+      "development_patch_sha256": "d898c1f4cfa79f45ea1689a610c2b07d7252294c2b02bb3b97588fb5139ff1fa",
+      "development_changed_paths": [
+        "src/d3d11/d3d11_context_impl.cpp"
+      ],
+      "baseline_files": {
+        "include/native/directx/COPYING.MinGW-w64.txt": {
+          "sha256": "f38e6194bd3bfa1b654f118e5acefe0aead437bbe669eee43957ccc65a7127f1",
+          "mode": "100644"
+        },
+        "include/native/directx/README.md": {
+          "sha256": "628147552686704ee48d6b4cb2e3b17cf459c84f3cfe6402604e7e1e643ab188",
+          "mode": "100644"
+        },
+        "include/native/directx/_mingw_unicode.h": {
+          "sha256": "3663cc841853b4350b9bfcbb5a43eed888ea8fc6dcb0225ef70cb5b19b5cd781",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d.h": {
+          "sha256": "257d132d19f6342a3de68aa2432f8623d46500bdeba8aa91f19f63a67d5f1732",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d10.h": {
+          "sha256": "05c8f42602de2d7ef7bc6882b382978a11f0a9cdd0acd200642b537526d7463d",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d10_1.h": {
+          "sha256": "24f89fae6806a62ae8a0bc2c97b5c597fa157de047096d4bff4ca35c2e29e998",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d10_1shader.h": {
+          "sha256": "f3aa1f0e8fae827429ee8b63b8e70874009e824cab44e90d72108a19cebf0b55",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d10effect.h": {
+          "sha256": "f9c2f071de41acaddebdce6f122681f967cfd6a15c0f54f5fe144a6708d5cd47",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d10misc.h": {
+          "sha256": "b10c48c34b1b1f3ea1693c4fed5dd923490b451bc1492171c6537ef935a69384",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d10sdklayers.h": {
+          "sha256": "2072941910513d4b77f290534c4a7c3d5e7dcd7416ed3f4fbecad04fa7873d25",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d10shader.h": {
+          "sha256": "57b8f0c6f02d0d97b72ffbe8f588c16b1b5c6db7e42d102f88965a20ca966d9e",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d11.h": {
+          "sha256": "908d60bf61b313ccf365e0a518dc55b9ce27e4de4b66d62b93f11460d826463a",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d11_1.h": {
+          "sha256": "261d57da8569363a2e35d2e8656627c90dba9142446e5b3cc1ea07ead51d38b8",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d11_2.h": {
+          "sha256": "104d17d9e3cd66621f67aaaa3853089c9886753b9ef0e46ea944f370a926a8a5",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d11_3.h": {
+          "sha256": "2e40b73954a8d0b1915864e611d90a86765e8bf1514e51305bec66808615da90",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d11_4.h": {
+          "sha256": "a7f978d40ebbed76f7f7edfddec204f05442ddacf7b64a8a28b9780bb24511be",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d11on12.h": {
+          "sha256": "c61cd3a0760d5526e2d1cb71c41e2374280ae650b72f73d77669fe32c3c0d54e",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d11sdklayers.h": {
+          "sha256": "cacc4fa125e36e78b5f289313088856262c75a87b8c1b970742e80a1342ac3f5",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d11shader.h": {
+          "sha256": "6e2a6961fa11e67b97a35e5d55322c1a62ac764f3a8a39d4ce6b0bca4c4a6dfa",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d12.h": {
+          "sha256": "a254992f5f05cffbd86a887dff3113383b696ddc0c8daafcc99789df9889323f",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d12sdklayers.h": {
+          "sha256": "75148b635a01dde73e5028da87048dc1861c12b6c6a12ea88531eb39f32d4be4",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d12shader.h": {
+          "sha256": "d4c6a5b7e0af2e991ebe2b6d4905abe0e7163041928abb4ebcf3f8e8bed52458",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d8.h": {
+          "sha256": "430ef065b793391f00e787c2e56c60948100c023fd2324fca7fe7b46e4e52981",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d8caps.h": {
+          "sha256": "accf384f302c6b52b366e63d2327ae66dd44f52f24b1b93cfe714515e6fba6a2",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d8types.h": {
+          "sha256": "2f9cf8fa0c25bb767e660cb5d46e91aa5876dcb7d7620fd5db40744a1ef190d5",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d9.h": {
+          "sha256": "fd58bd1dee959735c2790da0e2bd963a7b1b8b1283717713d4c7375da1da237e",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d9caps.h": {
+          "sha256": "0a7b77e975f432973ae94f48142dcef707683e42736c98c82b0c9fe737c30ef7",
+          "mode": "100644"
+        },
+        "include/native/directx/d3d9types.h": {
+          "sha256": "7b2294d91d2e0099498db1562dbd507b9d3e5da4141d93552611530250389eb0",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dcaps.h": {
+          "sha256": "b680ddd4bbc0345157ec0da7ce69a7bc8ae4e19fecf2952e045b4a723e40ee6e",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dcommon.h": {
+          "sha256": "834213f9325af5677f9a7437a49d1be0b0169c5e4cf2008bfc826b60dd723618",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dcompiler.h": {
+          "sha256": "ffd744e80273019d58efb8cc42d0e0d660605c4ffefd41776f3e34c97c5c6935",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dhal.h": {
+          "sha256": "3109254adf14db10c56ceb75fe9cd6d47e385334546db8937383d87e37f95195",
+          "mode": "100644"
+        },
+        "include/native/directx/d3drm.h": {
+          "sha256": "8b2088599e53253b9d0be3252004d90e97a085e0bfd9affe820e8bb755242890",
+          "mode": "100644"
+        },
+        "include/native/directx/d3drmdef.h": {
+          "sha256": "4f2213e5f37d49ad339df9b7a6fb800e305983d71f00050fe74b862b30274a22",
+          "mode": "100644"
+        },
+        "include/native/directx/d3drmobj.h": {
+          "sha256": "490f355d6e46f9cd72e7153d417ef0e4e922f952faf7022f2384e98358c9813c",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dtypes.h": {
+          "sha256": "557381d6f2d5a9b841f05a862d57b9395f8f1bca257e8ffa262c0cf402fefd97",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dvec.inl": {
+          "sha256": "021d69db144be8df5de66aea752acc50c28373a1eda576e57032310261446e66",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9.h": {
+          "sha256": "88eeb87b51ad53678d5762e96f153ed43d42bfd5ff31c0de03882833fda37ffd",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9anim.h": {
+          "sha256": "e542b241011edf92258e9af1a2d738076183ae111d973b1cf41d5f7955991acc",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9core.h": {
+          "sha256": "23b6c825c3789fb076ab194614539187a2342384c36b7e5acb7ea934cc75478c",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9effect.h": {
+          "sha256": "19805cb1a090ce64c6cbb80c50d1bf0d28cad4816bc6389808f4e49616c192b6",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9math.h": {
+          "sha256": "67f0de3dea3099cda0854dbe2287440b7fe9a7758032ef6e2e235b2c3baec115",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9math.inl": {
+          "sha256": "872f8f5ba78a3f2fbd97d79db9908c5008459af6e10d622f74d4d9f1df2e523b",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9mesh.h": {
+          "sha256": "0f31e2082d09170b020adc1490013786ce652dc359f4a47353b274aef75b9084",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9shader.h": {
+          "sha256": "16388a4258ee64c22170afa06f0c12abe0962fd7cdde0c320c07117cb846b2fb",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9shape.h": {
+          "sha256": "7281ef87ab4dcd8b657ffb9be21fd10f278902da021c09b6aa9ed4edabc25a04",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9tex.h": {
+          "sha256": "7d4f18a5a6af71c8cbdaa4d43d9b609e8c2e26b4e51f46ca5fb9d876f869a1ba",
+          "mode": "100644"
+        },
+        "include/native/directx/d3dx9xof.h": {
+          "sha256": "296586e9c5e20eebc7c29e3e61f76c9d091475d334e6f53dd5ddfc59306c959b",
+          "mode": "100644"
+        },
+        "include/native/directx/dxdiag.h": {
+          "sha256": "72a367a8e2f5847ba07c6f72433d197e34c339a1662e52c3418f738264bdda32",
+          "mode": "100644"
+        },
+        "include/native/directx/dxerr8.h": {
+          "sha256": "e33507fd8fe327a78cc3c12c5443c7b62636c40b3112e3314990ba986250fb92",
+          "mode": "100644"
+        },
+        "include/native/directx/dxerr9.h": {
+          "sha256": "9856e4023de3c196549c66c2e5efb63ba9e3bf7e17c5928365cc02771f349833",
+          "mode": "100644"
+        },
+        "include/native/directx/dxfile.h": {
+          "sha256": "0689094f667165bbbd563e71707ffe682331cbca6332c639ed390f9b287481ac",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgi.h": {
+          "sha256": "02aea2e61a8a9265739ab6d8369ef9a16cd2c310761312fe648cc18996b16f88",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgi1_2.h": {
+          "sha256": "12f55c53b3b7cf89997f947941fccd261efc0c86e4d3e98537a82ed2366d6e7e",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgi1_3.h": {
+          "sha256": "31548d27d9b3219a8578d3a131247f309e480db9b233d54fef4505dfc9fa257c",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgi1_4.h": {
+          "sha256": "2b52dfd2ee839c9921ab77ae403f3c53f09db7653446b9eeb12ceca5737443aa",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgi1_5.h": {
+          "sha256": "ba1045551d4804a13251cb4bfdec526438b55ac65a374c736761abfdb9e6aa94",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgi1_6.h": {
+          "sha256": "4058bf890b4bc30f9a87dd99ab692e1f7471047e588a6f71c3714114ce447bff",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgicommon.h": {
+          "sha256": "0747dd73255563e069cc5b8be7694d6ccb33cc80a6abf843e0973762ef2adf47",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgidebug.h": {
+          "sha256": "ee86ef78db1912e3db06d5af1e7b4d5f909ea80772a93830758e69f0232d68d9",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgiformat.h": {
+          "sha256": "51e2e9c71d2a36d1a4e2da3f4cd06323ede011d28a574474bd9ad9458c5ea3e7",
+          "mode": "100644"
+        },
+        "include/native/directx/dxgitype.h": {
+          "sha256": "e54e311092a1251c459b15078f7c92ca1a66b34753049aca9302c7de3515d6d6",
+          "mode": "100644"
+        },
+        "include/native/directx/dxtmpl.h": {
+          "sha256": "4a6cce46a36f6de1b3c1aba80f7ae5121ff471ef28716bea5da1e6b9f210aae2",
+          "mode": "100644"
+        },
+        "include/native/directx/dxva.h": {
+          "sha256": "8fc16f455586bae44900f3b8651819979e249278a12282d0ad8df4773c7ff468",
+          "mode": "100644"
+        },
+        "include/native/directx/dxva2api.h": {
+          "sha256": "38847a188be5ba420e6736fc616520dcb68273c4bf116f27549b033520d593af",
+          "mode": "100644"
+        },
+        "include/native/directx/dxvahd.h": {
+          "sha256": "ddc2038fb19f99e43b56744db02c2e7e7ca825d6b59af9c30bf96aa1e4bdc2e2",
+          "mode": "100644"
+        },
+        "src/airconv/airconv_public.h": {
+          "sha256": "cff2001743632c49fb16e05842105a945298cb39b097ba9246cec5c997750d0c",
+          "mode": "100644"
+        },
+        "src/airconv/dxbc_binding_sm50.cpp": {
+          "sha256": "65a5b2fb9285343d120383a0358a4ba8e2abd138107179d48f9ea5f31d95b71c",
+          "mode": "100644"
+        },
+        "src/airconv/dxbc_converter.cpp": {
+          "sha256": "0caa07cba34f2f4d91e52272200bd1ab54564acbffdf77bcd4d50dbf0266f88b",
+          "mode": "100644"
+        },
+        "src/airconv/dxbc_converter.hpp": {
+          "sha256": "4b9523ae295d8ecdd862b2a527041422611926555cedbbd8b32dbab4061ccb82",
+          "mode": "100644"
+        },
+        "src/airconv/dxbc_converter_basicblock.cpp": {
+          "sha256": "4511e7a6e40cfe67f1ddc7d965a75aa32ab414d214cb037a48ba6be563dfe83c",
+          "mode": "100644"
+        },
+        "src/airconv/dxbc_signature.cpp": {
+          "sha256": "badc89c0b7d23d3a68914fecd4d48a376526ba5219f24390f2cfe74d3837c894",
+          "mode": "100644"
+        },
+        "src/airconv/nt/dxbc_binding_map.hpp": {
+          "sha256": "188dce34f309541ef396f0d302120b22547181a2eff7e87d064bf901f233aae7",
+          "mode": "100644"
+        },
+        "src/airconv/nt/dxbc_converter_base.cpp": {
+          "sha256": "2514b4be9e3add32c1d601ee61409ddbca13df4a18a35da9ee6d2978b29e3c35",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_context_imm.cpp": {
+          "sha256": "009534557c25a2e2eeff0931d610e39d87aa102dc5cf52a100e6324b3f74e758",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_context_impl.cpp": {
+          "sha256": "02a5a5c953388182fbe29c196a30b179f54aaf178df6b7fbad8a9e5181b484b4",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_graph_trace.hpp": {
+          "sha256": "b083f0d6531eca338ada86a6a928f7d36059cd1b589cb2191b38179602590134",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_input_layout.cpp": {
+          "sha256": "17c85eb32ef937ad598a6dab214d8809c185c210cd971aa9d9c9cd25b1755634",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_pipeline.cpp": {
+          "sha256": "2089cdf86714901d8bd052990719496915230864d52bba8f140968d1f99bdb88",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_pipeline.hpp": {
+          "sha256": "201088b0b5dc4c923d9b9868d7c785e573d719347a126323fe6ae25127693a39",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_resource.hpp": {
+          "sha256": "10de786256316f1170a56e301c78790324921bf0387644bd46e77c0f6093a4b3",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_resource_view_helper.cpp": {
+          "sha256": "d4ba22a4e11d5408291b307f8c7579d7beb3a6fc6526287cbc5bd5440bd222e8",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_shader.cpp": {
+          "sha256": "fd41c6f47a6abce661a1314a3fc77f2f58b520a75e9a1b9566e62803f8188ab7",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_shader.hpp": {
+          "sha256": "bdc25b1ff23d8b7b74037993433a61def9f1f3ead5151c25bd7d6f1fddf5d622",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_texture_device.cpp": {
+          "sha256": "b4d0e9fa91c70827964e41dd2e22ba1dd0b01c8940added9d1a125d3928f0937",
+          "mode": "100644"
+        },
+        "src/d3d11/d3d11_texture_snapshot.hpp": {
+          "sha256": "c0f8327202546ed52f96cde4118d028427635e3590863c0631034e63bf0922d6",
+          "mode": "100644"
+        },
+        "src/dxmt-native/dxmt_native.cpp": {
+          "sha256": "0d50198fdc0509e9c8ace0088659ca3b6d8491a44fb2786937207f2371c96a58",
+          "mode": "100644"
+        },
+        "src/dxmt-native/dxmt_native.exports": {
+          "sha256": "39099e106d9bcab438ba508f5487f95f4ddaf00c1ec8bfe12affbf23a9e73124",
+          "mode": "100644"
+        },
+        "src/dxmt/dxmt_context.cpp": {
+          "sha256": "6659fcf65f447998c435d657c6d820d226ec0ee7f4abe30ba20c8b74270777bc",
+          "mode": "100644"
+        },
+        "src/dxmt/dxmt_context.hpp": {
+          "sha256": "8e32527e3e92f992f44bb59a43a821967a42aebd7f7bbdb250e001773ed09a62",
+          "mode": "100644"
+        },
+        "src/dxmt/dxmt_resource_initializer.cpp": {
+          "sha256": "dda994647845a8258e5f1c9f4ddc44cf1803ec2984ec98156ceedd04a510c612",
+          "mode": "100644"
+        },
+        "src/dxmt/dxmt_resource_initializer.hpp": {
+          "sha256": "6292074e95914b1590969c0fdad11f3656e41dad58c3b77edd584331c4ccb770",
+          "mode": "100644"
+        }
+      },
+      "development_files": {
+        "src/d3d11/d3d11_context_impl.cpp": {
+          "sha256": "ca49d72a6aa82114e3bb57f5790c471b138208ebb6fb66f9f0254e71eca40fde",
+          "mode": "100644"
+        }
+      }
+    },
+    "virglrenderer": {
+      "repository": "https://github.com/utmapp/virglrenderer",
+      "revision": "482f9d8b8c2d2288efa10a027116216909d2c226",
+      "archive_url": "https://github.com/utmapp/virglrenderer/archive/482f9d8b8c2d2288efa10a027116216909d2c226.tar.gz",
+      "archive_name": "virglrenderer-482f9d8b8c2d2288efa10a027116216909d2c226.tar.gz",
+      "archive_root": "virglrenderer-482f9d8b8c2d2288efa10a027116216909d2c226",
+      "archive_sha256": "47f2c2fd490486a133467c24edf1682bafb832111ca7c98a0f4448ad60f5293e",
+      "baseline_patch": "patches/graphics/virglrenderer-baseline.patch",
+      "baseline_patch_sha256": "3906dd4845c0625acc7ad1d4ded82c389575e81e0e614fb30ca5c784959acd38",
+      "baseline_changed_paths": [
+        "src/meson.build",
+        "src/neptune/npt_bc6_upload_check.c",
+        "src/neptune/npt_bc6_upload_check.h",
+        "src/neptune/npt_context.c",
+        "src/neptune/npt_context.h",
+        "src/neptune/npt_lighting_shader_export.c",
+        "src/neptune/npt_lighting_shader_export.h",
+        "src/neptune/npt_resource.c"
+      ],
+      "development_patch": "patches/graphics/virglrenderer-development.patch",
+      "development_patch_sha256": "e96f653de5bf5907765aadfce4e7dd9823472782ac17c6f6bb330cd89f7c9d8f",
+      "development_changed_paths": [
+        "src/neptune/npt_context.c",
+        "src/neptune/npt_context.h",
+        "src/neptune/npt_heap12.c",
+        "src/neptune/npt_resource.c"
+      ],
+      "baseline_files": {
+        "src/meson.build": {
+          "sha256": "c703a6f26d94ce7630f4a0fa237020be6749b45a97fbabb2bda110ceeaa5940e",
+          "mode": "100644"
+        },
+        "src/neptune/npt_bc6_upload_check.c": {
+          "sha256": "bc0c8f47d7bc7c093bc3e8991a0a2c89b08e86a6eefa0733b76b3427fdf37feb",
+          "mode": "100644"
+        },
+        "src/neptune/npt_bc6_upload_check.h": {
+          "sha256": "c1067a70c11e16ff93262cc8a5518c58f3f08093e8ec1a7afce54a955655f007",
+          "mode": "100644"
+        },
+        "src/neptune/npt_context.c": {
+          "sha256": "7f6c80f1f60d1f75149d56cbd2ed6db12960fadfc840e3964eb89be5c8401d76",
+          "mode": "100644"
+        },
+        "src/neptune/npt_context.h": {
+          "sha256": "10dc31f9a58450175cf0625e5dee8488a1c292b3719e608a5eea80719b6cc486",
+          "mode": "100644"
+        },
+        "src/neptune/npt_lighting_shader_export.c": {
+          "sha256": "62ca467826d26f3a588431d8beeb0f94728f57e6cd48d84ee1c36324a620d802",
+          "mode": "100644"
+        },
+        "src/neptune/npt_lighting_shader_export.h": {
+          "sha256": "4a8f034a42d2c416ad6f9dc4a083d72531b831c1796b0928c8c822375862d204",
+          "mode": "100644"
+        },
+        "src/neptune/npt_resource.c": {
+          "sha256": "5dfc3fdfa938a95792a621a20d9e19ff4674b83f2178e8bd59c6ecb48460bf7e",
+          "mode": "100644"
+        }
+      },
+      "development_files": {
+        "src/neptune/npt_context.c": {
+          "sha256": "8be783cc67ff3eeb76362f6be33eea77c63812ac3b256ce846d4ea0dbaf72db1",
+          "mode": "100644"
+        },
+        "src/neptune/npt_context.h": {
+          "sha256": "669e74b1bcc3a42ebe0b9380d90dfd047ce0bf7b09002d28af6224478b61e42d",
+          "mode": "100644"
+        },
+        "src/neptune/npt_heap12.c": {
+          "sha256": "ee9c2cfebd70e61ef86c4eb1cd8473fcdefc0890ff560171fc134826da77b713",
+          "mode": "100644"
+        },
+        "src/neptune/npt_resource.c": {
+          "sha256": "8abacb9a160e444d07cf0afd66708567c9df0cb02d9ef10cf84bdbc958ec4ca3",
+          "mode": "100644"
+        }
+      }
+    },
+    "neptune": {
+      "repository": "https://github.com/osy/virtio-win-mesa",
+      "revision": "9af316b3d8690c6f8a3026e4e88bd8035362d0b1",
+      "archive_url": "https://github.com/osy/virtio-win-mesa/archive/9af316b3d8690c6f8a3026e4e88bd8035362d0b1.tar.gz",
+      "archive_name": "mesa-9af316b3d8690c6f8a3026e4e88bd8035362d0b1.tar.gz",
+      "archive_root": "virtio-win-mesa-9af316b3d8690c6f8a3026e4e88bd8035362d0b1",
+      "archive_sha256": "0624cf6f05e59be238e997fca70b0faef975f157f54f1e99f9df80785d0ae592",
+      "baseline_patch": "patches/graphics/neptune-baseline.patch",
+      "baseline_patch_sha256": "058aadd0cc1c97c651aaf97ed466fa3b83f3e03a26a977ecafd7fabe3a2604ba",
+      "baseline_changed_paths": [
+        "src/virtio/neptune/astra_gpu_trace.h",
+        "src/virtio/neptune/npt_common.h",
+        "src/virtio/neptune/npt_overrides_d3d11_context.c",
+        "src/virtio/neptune/npt_overrides_d3d11_device.c",
+        "src/virtio/neptune/npt_renderer_virtgpu_win32.c",
+        "src/virtio/neptune/npt_resource.c",
+        "src/virtio/neptune/npt_resource.h",
+        "src/virtio/neptune/triton/astraGpuTrace.c",
+        "src/virtio/neptune/triton/meson.build",
+        "src/virtio/neptune/triton/triton.h",
+        "src/virtio/neptune/triton/tritonDDI.c",
+        "src/virtio/neptune/triton/tritonDxgi.c",
+        "src/virtio/neptune/triton/tritonResource.c",
+        "src/virtio/neptune/triton/tritonShader.c",
+        "src/virtio/neptune/triton/tritonSharedBridge.c",
+        "src/virtio/neptune/triton/tritonSharedBridge.h",
+        "src/virtio/neptune/triton/tritonState.c",
+        "src/virtio/neptune/triton/triton_log.h"
+      ],
+      "development_patch": "patches/graphics/neptune-development.patch",
+      "development_patch_sha256": "98e6b9206464841e52b4132240bd5048e067f42e0649733ff4484a96238d0fa1",
+      "development_changed_paths": [
+        "src/virtio/neptune/npt_dispatch.c",
+        "src/virtio/neptune/npt_ring.c",
+        "src/virtio/neptune/npt_ring.h",
+        "src/virtio/neptune/triton/astraGpuTrace.c"
+      ],
+      "baseline_files": {
+        "src/virtio/neptune/astra_gpu_trace.h": {
+          "sha256": "b6be8dc1cb8875b847d06f3df95843ed9300ff1c897a0e2db65d7ad7890daf2d",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/npt_common.h": {
+          "sha256": "ff2c21a599a0cbe92336d3e0ea6b926e5f48f2490c4c5412a340c399db5f236c",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/npt_overrides_d3d11_context.c": {
+          "sha256": "1ce3fa84c095f2d300db089bbd630f4d7dc8f14a7b5f15a4b1de71b149f05e05",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/npt_overrides_d3d11_device.c": {
+          "sha256": "3a359248ddf5a1765c88a80b38c32ac67ad70d8107077242368a9e6b73cf931a",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/npt_renderer_virtgpu_win32.c": {
+          "sha256": "d9c9d61dc5174b5da46cae222adc3c4c1d579a0d71139619bee0d0ccb4e070e8",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/npt_resource.c": {
+          "sha256": "6bd6b863fe92426a251e446b80a9684fe9fe1648dfb45308183792637bcc6465",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/npt_resource.h": {
+          "sha256": "199b3cdb7c7f6b590371e71f66555adc6464f138bd77526ca38c4907a70909a8",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/astraGpuTrace.c": {
+          "sha256": "1c9034ff0375fabffc7ab7c8a46e393b72c20d52204bfd188d3d85d9da4c4e01",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/meson.build": {
+          "sha256": "1933912ec867ee9c505218685b09155c90e68e12146a5e1f72287822b42aa46f",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/triton.h": {
+          "sha256": "bbc9ba0608b734b61aefa96a0f234c4509dd976deec40b04809000983a6d2cf5",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/tritonDDI.c": {
+          "sha256": "47bb27b5bbd4077771489a121d18a8a19e8202155efd0a6ef28e800dcb9e0513",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/tritonDxgi.c": {
+          "sha256": "806d23cef4e3abd2ff6b9d5fb97310681642a880fe7c9d5cc3df679bfcd9f4b7",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/tritonResource.c": {
+          "sha256": "7d50cc1a1d9c881d23ea5812f0f4e6aca45d9f8b923cfdea349a7b3376dae9f9",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/tritonShader.c": {
+          "sha256": "33fa2a2fe5f243a595e1ea0618cf63d7118096ea83b7a9a36d3795e6db27b8fb",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/tritonSharedBridge.c": {
+          "sha256": "a534942eb4fa8fb887cd7024b045eec53bd8e386c7214ea7534e43d98ee310e3",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/tritonSharedBridge.h": {
+          "sha256": "9140966ccf313162683aa5f2a6da84c28797010d499406652d74a93cb5dcb894",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/tritonState.c": {
+          "sha256": "3a5ff3040baa21d74369db885960821b8da1a8986b40455bf97f0b6cbd0b9c2d",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/triton_log.h": {
+          "sha256": "a405455e73c42ebbe72406cca512562406d80f3851ee363b9c5a5e61a896576d",
+          "mode": "100644"
+        }
+      },
+      "development_files": {
+        "src/virtio/neptune/npt_dispatch.c": {
+          "sha256": "64140aad6a9f8389626ff94049c0b1365aefd1cf41e07fa1a59c5ebe5f866b7d",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/npt_ring.c": {
+          "sha256": "c54ba402e2be934324287af4d9b7e17f42055fd72df7ccb21026c70c26f13643",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/npt_ring.h": {
+          "sha256": "70f4409c58c5da96a96dc5510a27b18e8e91882a15fbcafd5421361d1fb2637e",
+          "mode": "100644"
+        },
+        "src/virtio/neptune/triton/astraGpuTrace.c": {
+          "sha256": "66c3044ecd6fe41cc86c520d0b513c47cb7179ddaa5a3799df94492ca9f4190b",
+          "mode": "100644"
+        }
+      }
+    }
+  }
+}

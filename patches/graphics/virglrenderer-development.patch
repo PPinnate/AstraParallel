@@ -1,0 +1,308 @@
+diff --git a/src/neptune/npt_context.c b/src/neptune/npt_context.c
+index d373e1285f6e853b5b30e22d0bdcd50baf39d574..e4b538fc535a210c49877a308685da5936d5600c 100644
+--- a/src/neptune/npt_context.c
++++ b/src/neptune/npt_context.c
+@@ -5,6 +5,7 @@
+ 
+ #include "npt_context.h"
+ 
++#include <assert.h>
+ #include <fcntl.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -62,6 +63,8 @@
+ static void
+ npt_resource_free(struct npt_resource *res)
+ {
++   /* Context teardown joins ring users and drops heap imports first. */
++   assert(res->heap_import_count == 0 && res->transient_pin_count == 0);
+    switch (res->fd_type) {
+    case VIRGL_RESOURCE_FD_SHM:
+       if (res->u.data && !res->iov_owned)
+@@ -91,6 +94,38 @@
+ npt_context_free_detached_resource(struct npt_resource *res)
+ {
+    npt_resource_free(res);
++}
++
++struct npt_resource *
++npt_context_acquire_shm_resource(struct npt_context *ctx, uint32_t res_id)
++{
++   mtx_lock(&ctx->resource_mutex);
++   const struct hash_entry *entry =
++      _mesa_hash_table_search(ctx->resource_table, &res_id);
++   struct npt_resource *res = entry ? entry->data : NULL;
++   if (res && res->fd_type == VIRGL_RESOURCE_FD_SHM && res->u.data &&
++       res->transient_pin_count < UINT32_MAX) {
++      res->transient_pin_count++;
++   } else {
++      res = NULL;
++   }
++   mtx_unlock(&ctx->resource_mutex);
++   return res;
++}
++
++void
++npt_context_release_shm_resource(struct npt_context *ctx,
++                                 struct npt_resource *res)
++{
++   mtx_lock(&ctx->resource_mutex);
++   assert(res->transient_pin_count > 0);
++   res->transient_pin_count--;
++   const bool free_now = res->zombie && res->transient_pin_count == 0 &&
++                         res->heap_import_count == 0;
++   mtx_unlock(&ctx->resource_mutex);
++
++   if (free_now)
++      npt_resource_free(res);
+ }
+ 
+ /* Overrides are set only where the default dispatcher cannot cope:
+@@ -1239,19 +1274,21 @@
+       npt_ring_destroy(ring);
+    }
+ 
+-   /* A live ID3D12Heap import still aliases this mapping, so munmapping
+-    * it now is undefined under the host graphics driver.  Park the
+-    * detached entry as a zombie for the last import to free. */
++   /* A heap alias or an in-flight Map/Unmap may still use this mapping.
++    * Park the detached entry until both ownership kinds have released.
++    * Do not dereference res after unlocking: the last releaser may free it. */
+    mtx_lock(&ctx->resource_mutex);
+    const uint32_t imports = res->heap_import_count;
+-   if (imports > 0)
++   const uint32_t transient_pins = res->transient_pin_count;
++   const bool defer_free = imports > 0 || transient_pins > 0;
++   if (defer_free)
+       res->zombie = true;
+    mtx_unlock(&ctx->resource_mutex);
+ 
+-   if (imports > 0) {
+-      npt_log("destroy_resource: res %u still imported by %u D3D12 heap(s); "
+-              "DEFERRING munmap until heap release (zombie)",
+-              res_id, imports);
++   if (defer_free) {
++      npt_log("destroy_resource: res %u has %u heap import(s), %u transient "
++              "pin(s); DEFERRING munmap until last release (zombie)",
++              res_id, imports, transient_pins);
+       return;
+    }
+ 
+diff --git a/src/neptune/npt_context.h b/src/neptune/npt_context.h
+index 0df5f4a00d4daaf1a6a8c053e58e05cb4e832e4e..f7de732e9ca13a4bf8047be8fa9db7cff9072028 100644
+--- a/src/neptune/npt_context.h
++++ b/src/neptune/npt_context.h
+@@ -64,11 +64,11 @@
+ 
+    size_t size;
+ 
+-   /* Live ID3D12Heap imports aliasing u.data, plus any import in
+-    * progress.  While nonzero the mapping must NOT be munmapped: destroy
+-    * marks the entry `zombie` instead and the last import released
+-    * completes the free.  Both fields are guarded by resource_mutex. */
++   /* Heap aliases and in-flight SHM users both keep u.data alive. Destroy
++    * detaches the table entry and marks it zombie until BOTH counts reach
++    * zero. All three fields are guarded by resource_mutex. */
+    uint32_t heap_import_count;
++   uint32_t transient_pin_count;
+    bool zombie;
+ };
+ 
+@@ -266,15 +266,26 @@
+ void
+ npt_context_free_detached_resource(struct npt_resource *res);
+ 
++/* Acquire lookup and the transient lifetime pin in one mutex section.
++ * The caller must release exactly once, including on API failures. */
++struct npt_resource *
++npt_context_acquire_shm_resource(struct npt_context *ctx, uint32_t res_id);
++
++void
++npt_context_release_shm_resource(struct npt_context *ctx,
++                                 struct npt_resource *res);
++
+ static inline struct npt_resource *
+ npt_context_get_resource(struct npt_context *ctx, uint32_t res_id)
+ {
+    mtx_lock(&ctx->resource_mutex);
+    const struct hash_entry *entry =
+       _mesa_hash_table_search(ctx->resource_table, &res_id);
++   struct npt_resource *res = likely(entry) ? entry->data : NULL;
+    mtx_unlock(&ctx->resource_mutex);
+ 
+-   return likely(entry) ? entry->data : NULL;
++   /* Borrowed only; SHM users spanning a concurrent detach must acquire. */
++   return res;
+ }
+ 
+ /* Takes ownership of the fd. */
+diff --git a/src/neptune/npt_heap12.c b/src/neptune/npt_heap12.c
+index e52717643e12ef983457608f8e530e5a2f36480b..10660f0b15a7f6703b36a34ed5d19e5117d27639 100644
+--- a/src/neptune/npt_heap12.c
++++ b/src/neptune/npt_heap12.c
+@@ -56,15 +56,16 @@
+    return res;
+ }
+ 
+-/* Drop one import pin, completing the free of a resource that was
+- * destroyed while pinned. */
++/* Drop one import pin. A detached resource is freed only when no heap
++ * alias or transient Map/Unmap user remains. */
+ static void
+ npt_heap12_unpin(struct npt_context *ctx, struct npt_resource *res)
+ {
+    mtx_lock(&ctx->resource_mutex);
+    assert(res->heap_import_count > 0);
+    res->heap_import_count--;
+-   const bool free_now = res->zombie && res->heap_import_count == 0;
++   const bool free_now = res->zombie && res->heap_import_count == 0 &&
++                         res->transient_pin_count == 0;
+    const uint32_t res_id = res->res_id;
+    mtx_unlock(&ctx->resource_mutex);
+ 
+diff --git a/src/neptune/npt_resource.c b/src/neptune/npt_resource.c
+index 19b09af963416dd79aa187661202fc7210bc30a1..a89553b4dc70d51e4bafc355896aa06d17142181 100644
+--- a/src/neptune/npt_resource.c
++++ b/src/neptune/npt_resource.c
+@@ -315,11 +315,11 @@
+       ctx->sync_maps.entries[--ctx->sync_maps.count];
+ }
+ 
+-HRESULT
+-npt_resource_map(struct npt_context *ctx,
++static HRESULT
++npt_resource_map_pinned(struct npt_context *ctx,
+                  uint64_t context_id, uint64_t resource_id,
+                  uint32_t subresource, uint32_t access_flags,
+-                 uint32_t api_map_flags, uint32_t shmem_res_id,
++                 uint32_t api_map_flags, struct npt_resource *shmem_res,
+                  uint64_t read_range_begin,
+                  uint64_t read_range_end,
+                  uint64_t byte_size,
+@@ -341,14 +341,6 @@
+    if (!npt_resource_family_matches(ctx, resource_id, context_id,
+                                     "map_resource"))
+       return NPT_E_INVALIDARG;
+-
+-   struct npt_resource *shmem_res =
+-      npt_context_get_resource(ctx, shmem_res_id);
+-   if (!shmem_res || shmem_res->fd_type != VIRGL_RESOURCE_FD_SHM ||
+-       !shmem_res->u.data) {
+-      npt_log("map_resource: invalid SHM resource %u", shmem_res_id);
+-      return NPT_E_FAIL;
+-   }
+ 
+    if ((uint64_t)shmem_offset >= shmem_res->size) {
+       npt_log("map_resource: shmem_offset %u exceeds shmem size %zu",
+@@ -464,9 +456,39 @@
+ }
+ 
+ HRESULT
+-npt_resource_unmap(struct npt_context *ctx,
++npt_resource_map(struct npt_context *ctx,
++                 uint64_t context_id, uint64_t resource_id,
++                 uint32_t subresource, uint32_t access_flags,
++                 uint32_t api_map_flags, uint32_t shmem_res_id,
++                 uint64_t read_range_begin, uint64_t read_range_end,
++                 uint64_t byte_size, uint32_t mip_height, uint32_t mip_depth,
++                 uint32_t shmem_offset,
++                 uint32_t *out_row_pitch, uint32_t *out_depth_pitch,
++                 uint32_t *out_mapped_size)
++{
++   *out_row_pitch = 0;
++   *out_depth_pitch = 0;
++   *out_mapped_size = 0;
++   struct npt_resource *shmem_res =
++      npt_context_acquire_shm_resource(ctx, shmem_res_id);
++   if (!shmem_res) {
++      npt_log("map_resource: cannot acquire SHM resource %u", shmem_res_id);
++      return NPT_E_FAIL;
++   }
++
++   /* The pin spans blocking Map and the copy without holding a mutex. */
++   const HRESULT hr = npt_resource_map_pinned(ctx, context_id, resource_id,
++      subresource, access_flags, api_map_flags, shmem_res,
++      read_range_begin, read_range_end, byte_size, mip_height, mip_depth,
++      shmem_offset, out_row_pitch, out_depth_pitch, out_mapped_size);
++   npt_context_release_shm_resource(ctx, shmem_res);
++   return hr;
++}
++
++static HRESULT
++npt_resource_unmap_pinned(struct npt_context *ctx,
+                    uint64_t context_id, uint64_t resource_id,
+-                   uint32_t subresource, uint32_t shmem_res_id,
++                   uint32_t subresource, struct npt_resource *shmem_res,
+                    uint32_t shmem_offset, uint64_t byte_size,
+                    uint32_t access_flags,
+                    uint64_t written_range_begin,
+@@ -482,16 +504,9 @@
+                                     "unmap_resource"))
+       return NPT_E_INVALIDARG;
+ 
+-   struct npt_resource *shmem_res =
+-      npt_context_get_resource(ctx, shmem_res_id);
+-   if (!shmem_res || shmem_res->fd_type != VIRGL_RESOURCE_FD_SHM ||
+-       !shmem_res->u.data) {
+-      npt_log("unmap_resource: invalid SHM resource %u", shmem_res_id);
+-      return NPT_E_FAIL;
+-   }
+-
+    /* Bounds check the slot window. */
+-   if ((uint64_t)shmem_offset + byte_size > shmem_res->size) {
++   if ((uint64_t)shmem_offset > shmem_res->size ||
++       byte_size > shmem_res->size - (uint64_t)shmem_offset) {
+       npt_log("unmap_resource: slot window [%u, %u+%" PRIu64 ") "
+               "exceeds shmem size %zu",
+               shmem_offset, shmem_offset, byte_size,
+@@ -538,10 +553,7 @@
+       }
+ 
+       if ((access_flags & NPT_MAP_ACCESS_WRITE) && mapped.pData) {
+-         uint64_t bound = byte_size;
+-         if ((uint64_t)shmem_offset + bound > shmem_res->size)
+-            bound = shmem_res->size - shmem_offset;
+-         memcpy(mapped.pData, slot_src, (size_t)bound);
++         memcpy(mapped.pData, slot_src, (size_t)byte_size);
+       }
+ 
+       unmap_fn(imm_ctx, resource, subresource);
+@@ -570,6 +582,12 @@
+       uint64_t bound = byte_size ? byte_size : entry->mapped_size;
+       if (bound > entry->mapped_size)
+          bound = entry->mapped_size;
++      if (bound > shmem_res->size - (uint64_t)shmem_offset) {
++         npt_log("unmap_resource: effective copy %" PRIu64
++                 " at offset %u exceeds SHM size %zu",
++                 bound, shmem_offset, shmem_res->size);
++         return NPT_E_FAIL;
++      }
+       memcpy(entry->mapped_data, slot_src, (size_t)bound);
+    }
+ 
+@@ -611,3 +629,25 @@
+    npt_sync_map_remove(ctx, entry);
+    return NPT_S_OK;
+ }
++
++HRESULT
++npt_resource_unmap(struct npt_context *ctx,
++                   uint64_t context_id, uint64_t resource_id,
++                   uint32_t subresource, uint32_t shmem_res_id,
++                   uint32_t shmem_offset, uint64_t byte_size,
++                   uint32_t access_flags,
++                   uint64_t written_range_begin, uint64_t written_range_end)
++{
++   struct npt_resource *shmem_res =
++      npt_context_acquire_shm_resource(ctx, shmem_res_id);
++   if (!shmem_res) {
++      npt_log("unmap_resource: cannot acquire SHM resource %u", shmem_res_id);
++      return NPT_E_FAIL;
++   }
++
++   const HRESULT hr = npt_resource_unmap_pinned(ctx, context_id, resource_id,
++      subresource, shmem_res, shmem_offset, byte_size, access_flags,
++      written_range_begin, written_range_end);
++   npt_context_release_shm_resource(ctx, shmem_res);
++   return hr;
++}

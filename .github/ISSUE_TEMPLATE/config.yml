@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Installation and build instructions
+    url: https://github.com/PPinnate/AstraParallel#install-and-create-a-windows-vm
+    about: Check source-preview availability, setup steps, and pinned runtime requirements first.

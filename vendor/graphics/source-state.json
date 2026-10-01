@@ -1,0 +1,77 @@
+{
+  "recorded_at": "2026-09-19",
+  "status": "Development sources preserved; known undeployed edits identified; baseline overlays verified against original receipts",
+  "binary_rebuild_performed": false,
+  "files": [
+    {
+      "component": "dxmt",
+      "relative_path": "src/d3d11/d3d11_context_impl.cpp",
+      "development_sha256": "ca49d72a6aa82114e3bb57f5790c471b138208ebb6fb66f9f0254e71eca40fde",
+      "baseline_sha256": "02a5a5c953388182fbe29c196a30b179f54aaf178df6b7fbad8a9e5181b484b4",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/dxmt/src/d3d11/d3d11_context_impl.cpp"
+    },
+    {
+      "component": "virglrenderer",
+      "relative_path": "src/neptune/npt_context.c",
+      "development_sha256": "8be783cc67ff3eeb76362f6be33eea77c63812ac3b256ce846d4ea0dbaf72db1",
+      "baseline_sha256": "7f6c80f1f60d1f75149d56cbd2ed6db12960fadfc840e3964eb89be5c8401d76",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/virglrenderer/src/neptune/npt_context.c"
+    },
+    {
+      "component": "virglrenderer",
+      "relative_path": "src/neptune/npt_context.h",
+      "development_sha256": "669e74b1bcc3a42ebe0b9380d90dfd047ce0bf7b09002d28af6224478b61e42d",
+      "baseline_sha256": "10dc31f9a58450175cf0625e5dee8488a1c292b3719e608a5eea80719b6cc486",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/virglrenderer/src/neptune/npt_context.h"
+    },
+    {
+      "component": "virglrenderer",
+      "relative_path": "src/neptune/npt_resource.c",
+      "development_sha256": "8abacb9a160e444d07cf0afd66708567c9df0cb02d9ef10cf84bdbc958ec4ca3",
+      "baseline_sha256": "5dfc3fdfa938a95792a621a20d9e19ff4674b83f2178e8bd59c6ecb48460bf7e",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/virglrenderer/src/neptune/npt_resource.c"
+    },
+    {
+      "component": "virglrenderer",
+      "relative_path": "src/neptune/npt_resource.h",
+      "development_sha256": "0be70a015b56b1abe226555f5b55694e661b316fb246bd19fee2af0acb0f6a42",
+      "baseline_sha256": "0be70a015b56b1abe226555f5b55694e661b316fb246bd19fee2af0acb0f6a42",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/virglrenderer/src/neptune/npt_resource.h"
+    },
+    {
+      "component": "virglrenderer",
+      "relative_path": "src/neptune/npt_heap12.c",
+      "development_sha256": "ee9c2cfebd70e61ef86c4eb1cd8473fcdefc0890ff560171fc134826da77b713",
+      "baseline_sha256": "27ee9c8b0e7930113472f91e4b4ef1064e206e5941acec98124c44f39cf45f1e",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/virglrenderer/src/neptune/npt_heap12.c"
+    },
+    {
+      "component": "neptune",
+      "relative_path": "src/virtio/neptune/npt_dispatch.c",
+      "development_sha256": "64140aad6a9f8389626ff94049c0b1365aefd1cf41e07fa1a59c5ebe5f866b7d",
+      "baseline_sha256": "0a26a08160c1d219eb1c285d299fb08407a26784bf0758ed292d25bd1bfb564c",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/neptune/src/virtio/neptune/npt_dispatch.c"
+    },
+    {
+      "component": "neptune",
+      "relative_path": "src/virtio/neptune/npt_ring.c",
+      "development_sha256": "c54ba402e2be934324287af4d9b7e17f42055fd72df7ccb21026c70c26f13643",
+      "baseline_sha256": "c37f344fb017848cc60719a14e6e10b19734359608d0b3399b4c765a390a91af",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/neptune/src/virtio/neptune/npt_ring.c"
+    },
+    {
+      "component": "neptune",
+      "relative_path": "src/virtio/neptune/npt_ring.h",
+      "development_sha256": "70f4409c58c5da96a96dc5510a27b18e8e91882a15fbcafd5421361d1fb2637e",
+      "baseline_sha256": "ce96d58ef4027a93108313d2ef1b3e2f457118c0eba4d79f90935d832c18483f",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/neptune/src/virtio/neptune/npt_ring.h"
+    },
+    {
+      "component": "neptune",
+      "relative_path": "src/virtio/neptune/triton/astraGpuTrace.c",
+      "development_sha256": "66c3044ecd6fe41cc86c520d0b513c47cb7179ddaa5a3799df94492ca9f4190b",
+      "baseline_sha256": "1c9034ff0375fabffc7ab7c8a46e393b72c20d52204bfd188d3d85d9da4c4e01",
+      "baseline_overlay": "vendor/graphics/baseline-overlays/neptune/src/virtio/neptune/triton/astraGpuTrace.c"
+    }
+  ]
+}

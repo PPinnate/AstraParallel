@@ -1,0 +1,167 @@
+diff --git a/src/virtio/neptune/npt_dispatch.c b/src/virtio/neptune/npt_dispatch.c
+index 09edbf42345be66771647549914ee4c502eebc3a..32bd58ca13a1df7977a1a53fcb84f6be26bb7e27 100644
+--- a/src/virtio/neptune/npt_dispatch.c
++++ b/src/virtio/neptune/npt_dispatch.c
+@@ -144,10 +144,9 @@
+                             uint32_t shmem_res_id, uint64_t byte_size,
+                             uint32_t shmem_offset, uint32_t access_flags)
+ {
+-   struct npt_cmd_unmap_resource cmd;
+-   fill_unmap_cmd(&cmd, context_id, resource_id, subresource, shmem_res_id,
+-                  byte_size, shmem_offset, access_flags);
+-   return npt_ring_submit_raw(ring, &cmd, sizeof(cmd));
++   return npt_dispatch_resource_unmap_seqno(
++      ring, context_id, resource_id, subresource, shmem_res_id,
++      byte_size, shmem_offset, access_flags, NULL);
+ }
+ 
+ bool
+@@ -160,7 +159,40 @@
+    struct npt_cmd_unmap_resource cmd;
+    fill_unmap_cmd(&cmd, context_id, resource_id, subresource, shmem_res_id,
+                   byte_size, shmem_offset, access_flags);
+-   return npt_ring_submit_raw_seqno(ring, &cmd, sizeof(cmd), out_seqno);
++   uint32_t seqno = 0;
++   if (out_seqno)
++      *out_seqno = 0;
++   if (!npt_ring_submit_raw_seqno(ring, &cmd, sizeof(cmd), &seqno)) {
++      if (context_id && !access_flags) {
++         npt_log("unmap_resource: paired submit failed resource=%llu sub=%u",
++                 (unsigned long long)resource_id, subresource);
++         if (ring && ring->renderer)
++            npt_renderer_set_lost(ring->renderer);
++      }
++      return false;
++   }
++   if (out_seqno)
++      *out_seqno = seqno;
++
++   /* A paired D3D11 Map still owns its guest SHM at this point.  Wait
++    * inside Unmap, while the caller owns the context/resource/ring, so
++    * an immediate Release cannot destroy the payload before consumption.
++    * Rename-ring and D3D12 paths retain their existing behavior. */
++   if (!context_id || access_flags)
++      return true;
++   if (npt_ring_wait_seqno_complete(ring, seqno))
++      return true;
++
++   /* Fatal/lost is not successful completion.  The matching host SHM
++    * pins protect in-flight readers; a queued command whose blob was
++    * detached fails acquisition without touching its memory.  Thus this
++    * failure path needs no guest quarantine, but must report device loss. */
++   npt_log("unmap_resource: paired completion failed resource=%llu sub=%u "
++           "ring=%llu target=%u", (unsigned long long)resource_id,
++           subresource, (unsigned long long)ring->id, seqno);
++   if (ring->renderer)
++      npt_renderer_set_lost(ring->renderer);
++   return false;
+ }
+ 
+ /* D3D12 flavors: context_id = 0 routes the host to
+diff --git a/src/virtio/neptune/npt_ring.c b/src/virtio/neptune/npt_ring.c
+index 0cb9775c2628cbd03a063d52f87ea00b14b6214b..a52335b3d67d4a68a883695a32c5f0241de32913 100644
+--- a/src/virtio/neptune/npt_ring.c
++++ b/src/virtio/neptune/npt_ring.c
+@@ -952,6 +952,18 @@
+    return iter;
+ }
+ 
++/* Completion-valued form for ownership barriers.  The legacy wait
++ * returns a profiling iteration count and may leave on fatal/device loss.
++ * Keep the actual head/sequence predicate private to the ring module. */
++bool
++npt_ring_wait_seqno_complete(struct npt_ring *ring, uint32_t seqno)
++{
++   if (!ring)
++      return false;
++   npt_ring_wait_seqno(ring, seqno);
++   return npt_ring_seqno_status(ring, seqno);
++}
++
+ /* Wait for the host to consume past the last EXECUTE on this ring
+  * (i.e. done reading upload_shmem).  Caller holds ring->lock. */
+ static void
+diff --git a/src/virtio/neptune/npt_ring.h b/src/virtio/neptune/npt_ring.h
+index 92639fbac899c14e28bed8792b90650a94616d77..3d88605e54d3762ab91602bb064ce6b0ccb50206 100644
+--- a/src/virtio/neptune/npt_ring.h
++++ b/src/virtio/neptune/npt_ring.h
+@@ -382,6 +382,12 @@
+ uint32_t
+ npt_ring_wait_seqno(struct npt_ring *ring, uint32_t seqno);
+ 
++/* Wait with a completion verdict.  False means the ring is absent or the
++ * wait stopped on fatal/device loss before consumption; it is not success.
++ * Caller must keep the ring alive for the whole call and hold no ring lock. */
++bool
++npt_ring_wait_seqno_complete(struct npt_ring *ring, uint32_t seqno);
++
+ /* The seqno `head` must reach for everything published on this ring so
+  * far to have been decoded.  Reads the shared tail, so it is safe to use
+  * as a peer edge target: every byte below it is already visible to the
+diff --git a/src/virtio/neptune/triton/astraGpuTrace.c b/src/virtio/neptune/triton/astraGpuTrace.c
+index 1599f615c1abf5a9538c0717675d9cadf7728b72..fc390c19892214525ebd95313f22e1522de582b5 100644
+--- a/src/virtio/neptune/triton/astraGpuTrace.c
++++ b/src/virtio/neptune/triton/astraGpuTrace.c
+@@ -22,7 +22,7 @@
+     const char *client=strrchr(image,'\\');client=client?client+1:image;
+     SYSTEMTIME now;GetSystemTime(&now);
+     _snprintf_s(record,sizeof(record),_TRUNCATE,
+-        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 pid=%lu tid=%lu client=%s event=%s %s\n",
++        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=shm-unmap-sync-v1 pid=%lu tid=%lu client=%s event=%s %s\n",
+         now.wYear,now.wMonth,now.wDay,now.wHour,now.wMinute,now.wSecond,now.wMilliseconds,
+         GetCurrentProcessId(),GetCurrentThreadId(),client,kind,text?text:"");
+     HANDLE file=CreateFileA(path,FILE_APPEND_DATA,FILE_SHARE_READ|FILE_SHARE_WRITE,
+@@ -138,7 +138,7 @@
+         strcpy_s(callback_hr, sizeof(callback_hr), "not_called");
+     GetSystemTime(&now);
+     record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
+-        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=shm-unmap-sync-v1 "
+         "event=present_join pid=%lu tid=%lu client=%s seq=%llu method=%s "
+         "src_ctx=%u src_object=0x%016llx dst_ctx=%u dst_object=0x%016llx "
+         "primary=%u shared=%u width=%u height=%u format=%u "
+@@ -273,7 +273,7 @@
+     }
+     GetSystemTime(&timestamp);
+     record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
+-        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=shm-unmap-sync-v1 "
+         "event=bc6_source pid=%lu client=%s ctx=%u resource_id=%016llx "
+         "subresource=%u row_pitch=%u copy_size=%u tightbytes=%u "
+         "fnv1a64=%016llx reserved_blocks=%u origin=%s\n",
+@@ -874,7 +874,7 @@
+         const struct astra_bc6_entry_fingerprint *fingerprint = &snapshot->rows[sub];
+         const struct astra_bc6_map_origin *origin = &fingerprint->map_origin;
+         int size = _snprintf_s(record, sizeof(record), _TRUNCATE,
+-            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=shm-unmap-sync-v1 "
+             "event=bc6_map_origin pid=%lu client=%s ctx=%u resource_id=%016llx "
+             "subresource=%u query_bytes=%u match_state=%s tracking_complete=%u "
+             "reason=%s match_count=%u transitions=%u queries=%u evictions=%u "
+@@ -981,7 +981,7 @@
+     for (uint32_t sub = 0; sub < ASTRA_BC6_ENTRY_SUBRESOURCES; ++sub) {
+         const struct astra_bc6_entry_fingerprint *fingerprint = &snapshot->rows[sub];
+         int record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
+-            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=shm-unmap-sync-v1 "
+             "event=bc6_entry pid=%lu client=%s ctx=%u resource_id=%016llx "
+             "subresource=%u row_pitch=%u copy_size=%u tightbytes=%u "
+             "fnv1a64=%016llx reserved_blocks=%u origin=initial\n",
+@@ -1101,7 +1101,7 @@
+         goto writer_done;
+     }
+     int record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
+-        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++        "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=shm-unmap-sync-v1 "
+         "event=bc6_ddi_desc pid=%lu client=%s ctx=%u resource_id=%016llx seq=%u "
+         "raw_dimension=%u raw_format=%u raw_usage=%u raw_map_flags=%u "
+         "raw_mip_levels=%u raw_array_size=%u raw_sample_count=%u raw_sample_quality=%u "
+@@ -1337,7 +1337,7 @@
+     for (uint32_t sub = 0; sub < ASTRA_BC6_DDI_SOURCE_SUBRESOURCES; ++sub) {
+         const struct astra_bc6_ddi_source_fingerprint *row = &snapshot->rows[sub];
+         int record_size = _snprintf_s(record, sizeof(record), _TRUNCATE,
+-            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=resource-convert-v1 "
++            "%04u-%02u-%02uT%02u:%02u:%02u.%03uZ build=shm-unmap-sync-v1 "
+             "event=bc6_ddi_source pid=%lu client=%s ctx=%u resource_id=%016llx "
+             "subresource=%u row_pitch=%u copy_size=%u tightbytes=%u "
+             "fnv1a64=%016llx reserved_blocks=%u origin=initial\n",
