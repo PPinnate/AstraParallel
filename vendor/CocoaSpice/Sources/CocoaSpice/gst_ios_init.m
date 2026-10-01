@@ -1,3 +1,5 @@
+// Modified for Astra Parallel; see repository docs/upstream-notices.md.
+// Existing upstream copyright notices and the component license are retained.
 #include "gst_ios_init.h"
 #include <Foundation/Foundation.h>
 #include <TargetConditionals.h>

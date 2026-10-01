@@ -4,6 +4,14 @@ Astra Parallel is a macOS app for running Windows 11 ARM virtual machines on App
 
 **Current source: 0.3.0. This is an experimental developer preview.** Host tests passed on the development Mac. A complete fresh Windows installation, guest-tools installation, game regression test, and second physical Mac remain unverified. This repository does not claim Parallels performance parity.
 
+## Credits and upstream work
+
+Astra Parallel builds on the open-source work of [UTM](https://github.com/utmapp/UTM) and its contributors. Its accepted runtime was originally imported from **UTM 5.0.5 (124)**. The source includes a modified [CocoaSpice](https://github.com/utmapp/CocoaSpice) viewer and patches based on UTM's [DXMT](https://github.com/utmapp/dxmt) and [virglrenderer](https://github.com/utmapp/virglrenderer) forks and the [Neptune/Triton Mesa driver](https://github.com/osy/virtio-win-mesa).
+
+Credit also goes to the upstream QEMU, SPICE, DXMT authors and CodeWeavers, virglrenderer, Mesa, and other dependency contributors. Astra's macOS interface and integration work use these components in a standalone bundle that runs independently of an installed UTM app.
+
+Original copyright notices and component licenses remain with the source. The root MIT license covers only the original Astra files as scoped in [LICENSE](LICENSE); third-party and derived code keeps its own terms. See [upstream credits, exact source pins, and modification notes](docs/upstream-notices.md).
+
 ## What you can do here
 
 - Read and modify the macOS interface, VM lifecycle, guest-agent protocols, audio playback, input capture, and opt-in text clipboard.

@@ -72,9 +72,9 @@
     {
       "path": "README.md",
       "mode": "100644",
-      "bytes": 5120,
-      "sha256": "1de64ea51c6b51f058d7ecb3ae2655c7f5cd69f3f095eb9d9416417595e13ebf",
-      "git_blob_sha1": "cf67df1a53ff06c769c8ea8ffab0964f0eff1d00"
+      "bytes": 6210,
+      "sha256": "701e6fef7cfd764335567c79c72763212a2eefd9d7b4f00147d6c43218173bc8",
+      "git_blob_sha1": "4587a4da37c3f163a00e6ff22de2d50876bd66f0"
     },
     {
       "path": "STATUS.md",
@@ -457,9 +457,9 @@
     {
       "path": "docs/upstream-notices.md",
       "mode": "100644",
-      "bytes": 2282,
-      "sha256": "12236b5e6e8636031f64506bf56f46ce7520a4d7e4388e3245dd0c6931f03b33",
-      "git_blob_sha1": "8feae8b125c671f762b6e53bab440d3cb26a48c9"
+      "bytes": 5203,
+      "sha256": "2c4e25889bf226a0db0a4a745a1c2bf1d0501b3bbd81d033b12824ba09c2be6b",
+      "git_blob_sha1": "4fb5abb0e35b66a3f518bf48c2a9b0b91cf45edd"
     },
     {
       "path": "patches/graphics/dxmt-baseline.patch",
@@ -723,9 +723,9 @@
     {
       "path": "vendor/CocoaSpice/Package.swift",
       "mode": "100644",
-      "bytes": 2230,
-      "sha256": "802ed0ad6feabb53a842f22417c0eb5d6f3222b39bb3b8a90559907e20b91537",
-      "git_blob_sha1": "6643a4c3eee9db4a43223cbc3099e6f406c82609"
+      "bytes": 2382,
+      "sha256": "30c5c67b8c7a27cd36c6fa8bafcc8c368887ca07702d65b437ba8131617806ec",
+      "git_blob_sha1": "bd9a47786fae439717be31649bc6805db62b779c"
     },
     {
       "path": "vendor/CocoaSpice/README.md",
@@ -765,9 +765,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/CSConnection.m",
       "mode": "100644",
-      "bytes": 20920,
-      "sha256": "0bae6c1bda618e76ee61af8ca65b8d17f020f5fb55f725c51a2dcfef75efb21e",
-      "git_blob_sha1": "6ef537ab74767029fa6d1d8d7ef8e66e8c9c4873"
+      "bytes": 21072,
+      "sha256": "cfcc853e6a654f1872b93d25f27df75addf850ee35d7783d9d64b7f4e0f36140",
+      "git_blob_sha1": "34d7ca510b3ce3d8031bd5a5f6caf3bfbb6ec04c"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/CSCopyValidity.h",
@@ -786,9 +786,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/CSCursor.m",
       "mode": "100644",
-      "bytes": 10640,
-      "sha256": "7a5f883b78cbedb2a65af8df4add6baecb93f3c0909fbc9084b11d23587378eb",
-      "git_blob_sha1": "8cf35d5731a395fee2f905c021fc7a392e92d822"
+      "bytes": 10792,
+      "sha256": "6a9950d6a210c5e8d2802f95297d8e86450edba6000dedd15b01802f2588c8f4",
+      "git_blob_sha1": "7a3e74efb9c61193826ea6dc5aecad4d2b52898b"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/CSDisplay+Protected.h",
@@ -814,9 +814,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/CSDisplay.m",
       "mode": "100644",
-      "bytes": 33688,
-      "sha256": "bdbd5642dee5acc51a01e3eb2c2f1e663ccf3ececc282b3a0037ba72b5e0e045",
-      "git_blob_sha1": "44c39dcbfe5e8ce2f0ee50caf5b4dc07d275a916"
+      "bytes": 33840,
+      "sha256": "21c0db012995348d4bd9d205e59d0221da17ebec0ac7a00c4ea08f23c0e1f0bc",
+      "git_blob_sha1": "7be174bb0e6cbe87c8165ccf99343fdb414dace4"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/CSInput+Protected.h",
@@ -877,9 +877,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/CSSession.m",
       "mode": "100644",
-      "bytes": 15778,
-      "sha256": "95ed5efe5e2b7cf139128fd9a355038669ae85c27cfb79f81a1c645c8fd76787",
-      "git_blob_sha1": "5816d8ce4a243acf399203576538b3bbc3963120"
+      "bytes": 15930,
+      "sha256": "18ae743de97affd0f8a13945f8eda30badd1ee34c500833eabd9f5b2a732d845",
+      "git_blob_sha1": "7daa3a4301a889b522c4c4605f83b893af8d5ed7"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/CSUSBDevice+Protected.h",
@@ -5182,9 +5182,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/gst_ios_init.m",
       "mode": "100644",
-      "bytes": 39243,
-      "sha256": "f00aedf9e5e48b695ce439d1af1d713f593db79d37fa599d6964e04e24389798",
-      "git_blob_sha1": "16d3c221be00112323ef675089ad5736c6fba568"
+      "bytes": 39395,
+      "sha256": "d54f3dbd6cb30d3895085c98515d6d0bf369ba8066e2ba606ae900d157a91f02",
+      "git_blob_sha1": "cd28f92906f538c3cd6e66e98a7c734e430ae97d"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/include/CSChannel.h",
@@ -5196,9 +5196,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/include/CSConnection.h",
       "mode": "100644",
-      "bytes": 3969,
-      "sha256": "6bc159e2411a6a45aa31b7cbf9cbdff769ea950cd807f708535a69e10ab8c416",
-      "git_blob_sha1": "fa82479703746703492217d2a5b4dd9cdb4e249a"
+      "bytes": 4121,
+      "sha256": "530b68eb840787fc2a3f5a4745053b9c5449eb584099e95196afaf6858bdc7ef",
+      "git_blob_sha1": "5379ce6543a52889156c65fae32f2a61ee7f9f96"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/include/CSConnectionDelegate.h",
@@ -5210,9 +5210,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/include/CSCursor.h",
       "mode": "100644",
-      "bytes": 2097,
-      "sha256": "1079f51b5cafceccb54217055643fbdaed0efd001f7a8698e5445a1de6ce7580",
-      "git_blob_sha1": "5d28ca45657eba8ce09a3b273dd9f982763b01c8"
+      "bytes": 2249,
+      "sha256": "310860d9546c51928029f02c406600707025059011313a4ef526153dcb8483d6",
+      "git_blob_sha1": "4c9c7e5c7281885c80ccaf750e95cc7eb1ea2cd4"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/include/CSDisplay+Renderer.h",
@@ -5224,9 +5224,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/include/CSDisplay.h",
       "mode": "100644",
-      "bytes": 2793,
-      "sha256": "b063d48929dc7b6e0de66417d8350b8a18caf88e332b11cb1615f3e4094da56f",
-      "git_blob_sha1": "2b2d5af6b2cbd77a925031fa5cb64df61a69e94c"
+      "bytes": 2945,
+      "sha256": "9e9494ecd74552438b5ff2dadae3574669170fc3c3d56e71a1ef6763090d37ae",
+      "git_blob_sha1": "4b0b58dc23c3fd66d82bc9ae4502ac4d4475cb92"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpice/include/CSInput.h",
@@ -5329,9 +5329,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpiceRenderer/CSMetalRenderer.m",
       "mode": "100644",
-      "bytes": 22354,
-      "sha256": "99c56c3d2a708779e9620f2de8531bb97a1a71c322c1638e1140331d4d958934",
-      "git_blob_sha1": "3b49b31b73ecc14b06e8150103fb9d0862856c7b"
+      "bytes": 22506,
+      "sha256": "8af78f448e502d347971be929c943cade57acdc3284de393bc2f0b4bd9e58067",
+      "git_blob_sha1": "8c51f00f3fab3dea5105ec4f36c84ca450e748b3"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpiceRenderer/CSRenderer.h",
@@ -5350,9 +5350,9 @@
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpiceRenderer/include/CSMetalRenderer.h",
       "mode": "100644",
-      "bytes": 1455,
-      "sha256": "de16e68ed81637d08217186db65a37c670c5098967c05f0fee7d86493c644c6a",
-      "git_blob_sha1": "c2f0dfc42750759b0fc82b3cb4d4298f565d0b6f"
+      "bytes": 1607,
+      "sha256": "001a30b70e746143e3b7d9e7371e987d88397c0500cf960994c6c65b9e1a45d7",
+      "git_blob_sha1": "ac0acd04439939b52ed6a20d929370d61d7087b3"
     },
     {
       "path": "vendor/CocoaSpice/Sources/CocoaSpiceRenderer/include/CSRenderSource.h",

@@ -1,4 +1,6 @@
 // swift-tools-version:5.5
+// Modified for Astra Parallel; see repository docs/upstream-notices.md.
+// Existing upstream copyright notices and the component license are retained.
 
 import PackageDescription
 

@@ -1,3 +1,5 @@
+// Modified for Astra Parallel; see repository docs/upstream-notices.md.
+// Existing upstream copyright notices and the component license are retained.
 //
 // Copyright © 2022 osy. All rights reserved.
 //
